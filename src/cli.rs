@@ -5,12 +5,10 @@ use clap::{Parser, Subcommand};
 
 const DEFAULT_FILE: &str = "calendar.ics";
 
-fn parse_date(s: &str) -> Result<NaiveDate, String> {
-    // YYYY-MM-DD
+pub fn parse_date(s: &str) -> Result<NaiveDate, String> {
     if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
         return Ok(d);
     }
-    // YYYY/M/D (with or without zero-padding)
     let parts: Vec<&str> = s.split('/').collect();
     if parts.len() == 3 {
         if let (Ok(y), Ok(m), Ok(d)) = (
@@ -46,12 +44,12 @@ pub enum Commands {
         /// Path to the ICS file (default: calendar.ics)
         #[arg(default_value = DEFAULT_FILE)]
         file: PathBuf,
-        /// Event summary/title
+        /// Event summary/title (interactive if omitted)
         #[arg(long)]
-        summary: String,
-        /// Start date (YYYY-MM-DD or YYYY/M/D)
+        summary: Option<String>,
+        /// Start date (YYYY-MM-DD or YYYY/M/D, interactive if omitted)
         #[arg(long, value_parser = parse_date)]
-        start: NaiveDate,
+        start: Option<NaiveDate>,
         /// End date (YYYY-MM-DD or YYYY/M/D, inclusive). Omit for single-day event
         #[arg(long, value_parser = parse_date)]
         end: Option<NaiveDate>,
@@ -61,5 +59,17 @@ pub enum Commands {
         /// Path to the ICS file (default: calendar.ics)
         #[arg(default_value = DEFAULT_FILE)]
         file: PathBuf,
+    },
+    /// Remove an event from the calendar
+    Remove {
+        /// Path to the ICS file (default: calendar.ics)
+        #[arg(default_value = DEFAULT_FILE)]
+        file: PathBuf,
+        /// Remove events matching this summary
+        #[arg(long)]
+        summary: Option<String>,
+        /// Remove event at this index (1-based, from list output)
+        #[arg(long)]
+        index: Option<usize>,
     },
 }

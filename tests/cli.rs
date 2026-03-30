@@ -117,3 +117,111 @@ fn add_with_slash_date_format() {
         .success()
         .stdout(predicate::str::contains("2026-04-08 to 2026-05-03 : 夏季休業"));
 }
+
+#[test]
+fn remove_by_summary_cli() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("test.ics");
+    let file_str = file.to_str().unwrap();
+
+    cmd().args(["init", file_str]).assert().success();
+    cmd()
+        .args(["add", file_str, "--summary", "元日", "--start", "2026-01-01"])
+        .assert()
+        .success();
+    cmd()
+        .args(["add", file_str, "--summary", "建国記念の日", "--start", "2026-02-11"])
+        .assert()
+        .success();
+
+    // remove by summary
+    cmd()
+        .args(["remove", file_str, "--summary", "元日"])
+        .assert()
+        .success();
+
+    cmd()
+        .args(["list", file_str])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("建国記念の日"))
+        .stdout(predicate::str::contains("元日").not());
+}
+
+#[test]
+fn remove_by_index_cli() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("test.ics");
+    let file_str = file.to_str().unwrap();
+
+    cmd().args(["init", file_str]).assert().success();
+    cmd()
+        .args(["add", file_str, "--summary", "元日", "--start", "2026-01-01"])
+        .assert()
+        .success();
+    cmd()
+        .args(["add", file_str, "--summary", "建国記念の日", "--start", "2026-02-11"])
+        .assert()
+        .success();
+
+    // remove by index (1-based)
+    cmd()
+        .args(["remove", file_str, "--index", "2"])
+        .assert()
+        .success();
+
+    cmd()
+        .args(["list", file_str])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("元日"))
+        .stdout(predicate::str::contains("建国記念の日").not());
+}
+
+#[test]
+fn remove_interactive_cli() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("test.ics");
+    let file_str = file.to_str().unwrap();
+
+    cmd().args(["init", file_str]).assert().success();
+    cmd()
+        .args(["add", file_str, "--summary", "元日", "--start", "2026-01-01"])
+        .assert()
+        .success();
+
+    // interactive remove: pipe "1\n" to stdin
+    cmd()
+        .args(["remove", file_str])
+        .write_stdin("1\n")
+        .assert()
+        .success();
+
+    cmd()
+        .args(["list", file_str])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("元日").not());
+}
+
+#[test]
+fn add_interactive_cli() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("test.ics");
+    let file_str = file.to_str().unwrap();
+
+    cmd().args(["init", file_str]).assert().success();
+
+    // interactive add: pipe summary, start, end
+    cmd()
+        .args(["add", file_str])
+        .write_stdin("元日\n2026/1/1\n\n")
+        .assert()
+        .success();
+
+    cmd()
+        .args(["list", file_str])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2026-01-01 : 元日"));
+}

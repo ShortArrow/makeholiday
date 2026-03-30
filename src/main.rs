@@ -14,12 +14,17 @@ fn main() {
             summary,
             start,
             end,
-        } => commands::add(&file, &summary, start, end),
+        } => commands::add(&file, summary.as_deref(), start, end),
         Commands::List { file } => commands::list(&file).map(|output| {
             if !output.is_empty() {
                 println!("{output}");
             }
         }),
+        Commands::Remove {
+            file,
+            summary,
+            index,
+        } => commands::remove(&file, summary.as_deref(), index),
     };
     if let Err(e) = result {
         eprintln!("Error: {e}");

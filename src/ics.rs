@@ -1,8 +1,9 @@
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveDateTime};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VEvent {
     pub uid: String,
+    pub dtstamp: NaiveDateTime,
     pub dtstart: NaiveDate,
     pub dtend: NaiveDate,
     pub summary: String,
@@ -18,8 +19,9 @@ pub fn vcalendar_footer() -> String {
 
 pub fn format_vevent(event: &VEvent) -> String {
     format!(
-        "BEGIN:VEVENT\r\nUID:{}\r\nDTSTART;VALUE=DATE:{}\r\nDTEND;VALUE=DATE:{}\r\nSUMMARY:{}\r\nTRANSP:TRANSPARENT\r\nEND:VEVENT\r\n",
+        "BEGIN:VEVENT\r\nUID:{}\r\nDTSTAMP:{}\r\nDTSTART;VALUE=DATE:{}\r\nDTEND;VALUE=DATE:{}\r\nSUMMARY:{}\r\nTRANSP:TRANSPARENT\r\nEND:VEVENT\r\n",
         event.uid,
+        event.dtstamp.format("%Y%m%dT%H%M%SZ"),
         event.dtstart.format("%Y%m%d"),
         event.dtend.format("%Y%m%d"),
         event.summary,
@@ -40,6 +42,7 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
     let normalized = content.replace("\r\n", "\n");
     let mut in_event = false;
     let mut uid = String::new();
+    let mut dtstamp: Option<NaiveDateTime> = None;
     let mut dtstart: Option<NaiveDate> = None;
     let mut dtend: Option<NaiveDate> = None;
     let mut summary = String::new();
@@ -49,14 +52,17 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
         if line == "BEGIN:VEVENT" {
             in_event = true;
             uid.clear();
+            dtstamp = None;
             dtstart = None;
             dtend = None;
             summary.clear();
         } else if line == "END:VEVENT" && in_event {
+            let stamp = dtstamp.ok_or("VEVENT missing DTSTAMP")?;
             let start = dtstart.ok_or("VEVENT missing DTSTART")?;
             let end = dtend.ok_or("VEVENT missing DTEND")?;
             events.push(VEvent {
                 uid: uid.clone(),
+                dtstamp: stamp,
                 dtstart: start,
                 dtend: end,
                 summary: summary.clone(),
@@ -65,6 +71,11 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
         } else if in_event {
             if let Some(val) = line.strip_prefix("UID:") {
                 uid = val.to_string();
+            } else if let Some(val) = line.strip_prefix("DTSTAMP:") {
+                dtstamp = Some(
+                    NaiveDateTime::parse_from_str(val, "%Y%m%dT%H%M%SZ")
+                        .map_err(|e| format!("Invalid DTSTAMP: {e}"))?,
+                );
             } else if let Some(val) = line.strip_prefix("DTSTART;VALUE=DATE:") {
                 dtstart = Some(
                     NaiveDate::parse_from_str(val, "%Y%m%d")
@@ -94,6 +105,34 @@ pub fn insert_event(content: &str, event: &VEvent) -> Result<String, String> {
     Ok(result)
 }
 
+pub fn remove_event_by_summary(content: &str, summary: &str) -> Result<String, String> {
+    let events = parse_events(content)?;
+    let remaining: Vec<_> = events.iter().filter(|e| e.summary != summary).collect();
+    if remaining.len() == events.len() {
+        return Err(format!("No event found with summary: {summary}"));
+    }
+    Ok(format_calendar(
+        &remaining.into_iter().cloned().collect::<Vec<_>>(),
+    ))
+}
+
+pub fn remove_event_by_index(content: &str, index: usize) -> Result<String, String> {
+    let events = parse_events(content)?;
+    if index == 0 || index > events.len() {
+        return Err(format!(
+            "Index {index} out of range (1-{})",
+            events.len()
+        ));
+    }
+    let remaining: Vec<_> = events
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != index - 1)
+        .map(|(_, e)| e.clone())
+        .collect();
+    Ok(format_calendar(&remaining))
+}
+
 pub fn format_event_line(event: &VEvent) -> String {
     let start = event.dtstart;
     let end = event.dtend - chrono::Days::new(1);
@@ -112,9 +151,25 @@ pub fn format_event_line(event: &VEvent) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::NaiveDate;
+    use chrono::{NaiveDate, NaiveDateTime};
 
-    // Step 1: vcalendar_header
+    fn test_dtstamp() -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(2026, 3, 27)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+    }
+
+    fn make_event(uid: &str, start: (i32, u32, u32), end: (i32, u32, u32), summary: &str) -> VEvent {
+        VEvent {
+            uid: uid.to_string(),
+            dtstamp: test_dtstamp(),
+            dtstart: NaiveDate::from_ymd_opt(start.0, start.1, start.2).unwrap(),
+            dtend: NaiveDate::from_ymd_opt(end.0, end.1, end.2).unwrap(),
+            summary: summary.to_string(),
+        }
+    }
+
     #[test]
     fn header_contains_crlf_and_required_fields() {
         let h = vcalendar_header();
@@ -124,23 +179,17 @@ mod tests {
         assert!(h.contains("PRODID:"));
     }
 
-    // Step 2: vcalendar_footer
     #[test]
     fn footer_is_end_vcalendar_crlf() {
         assert_eq!(vcalendar_footer(), "END:VCALENDAR\r\n");
     }
 
-    // Step 3: format_vevent single day
     #[test]
     fn format_vevent_single_day() {
-        let event = VEvent {
-            uid: "test-uid-1".to_string(),
-            dtstart: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
-            dtend: NaiveDate::from_ymd_opt(2026, 1, 2).unwrap(),
-            summary: "元日".to_string(),
-        };
+        let event = make_event("test-uid-1", (2026, 1, 1), (2026, 1, 2), "元日");
         let output = format_vevent(&event);
         assert!(output.contains("BEGIN:VEVENT\r\n"));
+        assert!(output.contains("DTSTAMP:20260327T000000Z\r\n"));
         assert!(output.contains("DTSTART;VALUE=DATE:20260101\r\n"));
         assert!(output.contains("DTEND;VALUE=DATE:20260102\r\n"));
         assert!(output.contains("SUMMARY:元日\r\n"));
@@ -149,21 +198,14 @@ mod tests {
         assert!(output.contains("END:VEVENT\r\n"));
     }
 
-    // Step 4: format_vevent multi day
     #[test]
     fn format_vevent_multi_day() {
-        let event = VEvent {
-            uid: "test-uid-2".to_string(),
-            dtstart: NaiveDate::from_ymd_opt(2026, 12, 29).unwrap(),
-            dtend: NaiveDate::from_ymd_opt(2027, 1, 4).unwrap(),
-            summary: "年末年始".to_string(),
-        };
+        let event = make_event("test-uid-2", (2026, 12, 29), (2027, 1, 4), "年末年始");
         let output = format_vevent(&event);
         assert!(output.contains("DTSTART;VALUE=DATE:20261229"));
         assert!(output.contains("DTEND;VALUE=DATE:20270104"));
     }
 
-    // Step 5: format_calendar empty
     #[test]
     fn format_calendar_empty() {
         let cal = format_calendar(&[]);
@@ -172,22 +214,11 @@ mod tests {
         assert!(!cal.contains("BEGIN:VEVENT"));
     }
 
-    // Step 6: format_calendar with events
     #[test]
     fn format_calendar_with_events() {
         let events = vec![
-            VEvent {
-                uid: "a".to_string(),
-                dtstart: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
-                dtend: NaiveDate::from_ymd_opt(2026, 1, 2).unwrap(),
-                summary: "元日".to_string(),
-            },
-            VEvent {
-                uid: "b".to_string(),
-                dtstart: NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(),
-                dtend: NaiveDate::from_ymd_opt(2026, 2, 12).unwrap(),
-                summary: "建国記念の日".to_string(),
-            },
+            make_event("a", (2026, 1, 1), (2026, 1, 2), "元日"),
+            make_event("b", (2026, 2, 11), (2026, 2, 12), "建国記念の日"),
         ];
         let cal = format_calendar(&events);
         assert_eq!(cal.matches("BEGIN:VEVENT").count(), 2);
@@ -195,22 +226,15 @@ mod tests {
         assert!(cal.contains("SUMMARY:建国記念の日"));
     }
 
-    // Step 7: parse_events round-trip
     #[test]
     fn parse_events_roundtrip() {
-        let event = VEvent {
-            uid: "rt-1".to_string(),
-            dtstart: NaiveDate::from_ymd_opt(2026, 5, 3).unwrap(),
-            dtend: NaiveDate::from_ymd_opt(2026, 5, 4).unwrap(),
-            summary: "憲法記念日".to_string(),
-        };
+        let event = make_event("rt-1", (2026, 5, 3), (2026, 5, 4), "憲法記念日");
         let cal = format_calendar(&[event.clone()]);
         let parsed = parse_events(&cal).unwrap();
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0], event);
     }
 
-    // Step 8: parse_events empty calendar
     #[test]
     fn parse_events_empty() {
         let cal = format_calendar(&[]);
@@ -218,16 +242,10 @@ mod tests {
         assert!(parsed.is_empty());
     }
 
-    // Step 9: insert_event
     #[test]
     fn insert_event_adds_vevent_before_footer() {
         let cal = format_calendar(&[]);
-        let event = VEvent {
-            uid: "ins-1".to_string(),
-            dtstart: NaiveDate::from_ymd_opt(2026, 3, 20).unwrap(),
-            dtend: NaiveDate::from_ymd_opt(2026, 3, 21).unwrap(),
-            summary: "春分の日".to_string(),
-        };
+        let event = make_event("ins-1", (2026, 3, 20), (2026, 3, 21), "春分の日");
         let result = insert_event(&cal, &event).unwrap();
         assert!(result.contains("SUMMARY:春分の日"));
         assert!(result.ends_with("END:VCALENDAR\r\n"));
@@ -236,29 +254,59 @@ mod tests {
         assert_eq!(parsed[0].summary, "春分の日");
     }
 
-    // Step 10: format_event_line
     #[test]
     fn format_event_line_single_day() {
-        let event = VEvent {
-            uid: "x".to_string(),
-            dtstart: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
-            dtend: NaiveDate::from_ymd_opt(2026, 1, 2).unwrap(),
-            summary: "元日".to_string(),
-        };
+        let event = make_event("x", (2026, 1, 1), (2026, 1, 2), "元日");
         assert_eq!(format_event_line(&event), "2026-01-01 : 元日");
     }
 
     #[test]
     fn format_event_line_multi_day() {
-        let event = VEvent {
-            uid: "y".to_string(),
-            dtstart: NaiveDate::from_ymd_opt(2026, 12, 29).unwrap(),
-            dtend: NaiveDate::from_ymd_opt(2027, 1, 4).unwrap(),
-            summary: "年末年始".to_string(),
-        };
+        let event = make_event("y", (2026, 12, 29), (2027, 1, 4), "年末年始");
         assert_eq!(
             format_event_line(&event),
             "2026-12-29 to 2027-01-03 : 年末年始"
         );
+    }
+
+    // remove tests
+    #[test]
+    fn remove_by_summary() {
+        let events = vec![
+            make_event("a", (2026, 1, 1), (2026, 1, 2), "元日"),
+            make_event("b", (2026, 2, 11), (2026, 2, 12), "建国記念の日"),
+        ];
+        let cal = format_calendar(&events);
+        let result = remove_event_by_summary(&cal, "元日").unwrap();
+        let parsed = parse_events(&result).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].summary, "建国記念の日");
+    }
+
+    #[test]
+    fn remove_by_summary_not_found() {
+        let cal = format_calendar(&[make_event("a", (2026, 1, 1), (2026, 1, 2), "元日")]);
+        let result = remove_event_by_summary(&cal, "存在しない");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn remove_by_index() {
+        let events = vec![
+            make_event("a", (2026, 1, 1), (2026, 1, 2), "元日"),
+            make_event("b", (2026, 2, 11), (2026, 2, 12), "建国記念の日"),
+        ];
+        let cal = format_calendar(&events);
+        let result = remove_event_by_index(&cal, 1).unwrap();
+        let parsed = parse_events(&result).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].summary, "建国記念の日");
+    }
+
+    #[test]
+    fn remove_by_index_out_of_range() {
+        let cal = format_calendar(&[make_event("a", (2026, 1, 1), (2026, 1, 2), "元日")]);
+        assert!(remove_event_by_index(&cal, 0).is_err());
+        assert!(remove_event_by_index(&cal, 2).is_err());
     }
 }
