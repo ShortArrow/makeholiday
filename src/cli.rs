@@ -46,6 +46,10 @@ pub fn parse_date(s: &str) -> Result<NaiveDate, String> {
 #[derive(Parser)]
 #[command(name = "makeholiday", about = "ICS calendar file manager")]
 pub struct Cli {
+    /// Path to the ICS file (default: calendar.ics)
+    #[arg(long, short, global = true, default_value = DEFAULT_FILE)]
+    pub file: PathBuf,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -53,16 +57,9 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Initialize a new ICS calendar file
-    Init {
-        /// Path to the ICS file (default: calendar.ics)
-        #[arg(default_value = DEFAULT_FILE)]
-        file: PathBuf,
-    },
+    Init,
     /// Add an all-day event to the calendar
     Add {
-        /// Path to the ICS file (default: calendar.ics)
-        #[arg(default_value = DEFAULT_FILE)]
-        file: PathBuf,
         /// Event summary/title (interactive if omitted)
         #[arg(long)]
         summary: Option<String>,
@@ -75,9 +72,6 @@ pub enum Commands {
     },
     /// List all events in the calendar
     List {
-        /// Path to the ICS file (default: calendar.ics)
-        #[arg(default_value = DEFAULT_FILE)]
-        file: PathBuf,
         /// Sort by field (repeatable for multi-key sort, e.g. --sort start --sort summary)
         #[arg(long, value_enum)]
         sort: Vec<SortField>,
@@ -87,9 +81,6 @@ pub enum Commands {
     },
     /// Remove an event from the calendar
     Remove {
-        /// Path to the ICS file (default: calendar.ics)
-        #[arg(default_value = DEFAULT_FILE)]
-        file: PathBuf,
         /// Remove events matching this summary
         #[arg(long)]
         summary: Option<String>,

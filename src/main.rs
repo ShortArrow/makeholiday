@@ -7,27 +7,25 @@ use cli::{Cli, Commands};
 
 fn main() {
     let cli = Cli::parse();
+    let file = &cli.file;
     let result = match cli.command {
-        Commands::Init { file } => commands::init(&file),
+        Commands::Init => commands::init(file),
         Commands::Add {
-            file,
             summary,
             start,
             end,
-        } => commands::add(&file, summary.as_deref(), start, end),
-        Commands::List { file, sort, desc } => {
+        } => commands::add(file, summary.as_deref(), start, end),
+        Commands::List { sort, desc } => {
             let keys: Vec<_> = sort.iter().map(|s| s.to_sort_key()).collect();
-            commands::list(&file, &keys, desc).map(|output| {
+            commands::list(file, &keys, desc).map(|output| {
                 if !output.is_empty() {
                     println!("{output}");
                 }
             })
         }
-        Commands::Remove {
-            file,
-            summary,
-            index,
-        } => commands::remove(&file, summary.as_deref(), index),
+        Commands::Remove { summary, index } => {
+            commands::remove(file, summary.as_deref(), index)
+        }
     };
     if let Err(e) = result {
         eprintln!("Error: {e}");
