@@ -102,10 +102,19 @@ pub fn add(
     Ok(())
 }
 
-pub fn list(file: &Path) -> Result<String, String> {
+pub fn list(
+    file: &Path,
+    sort_keys: &[ics::SortKey],
+    descending: bool,
+) -> Result<String, String> {
     let content =
         std::fs::read_to_string(file).map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
     let events = ics::parse_events(&content)?;
+    let events = if sort_keys.is_empty() {
+        events
+    } else {
+        ics::sort_events(&events, sort_keys, descending)
+    };
     let output = events
         .iter()
         .enumerate()
@@ -255,7 +264,7 @@ mod tests {
             Some(NaiveDate::from_ymd_opt(2027, 1, 3).unwrap()),
         )
         .unwrap();
-        let output = list(&path).unwrap();
+        let output = list(&path, &[], false).unwrap();
         assert!(output.contains("1: 2026-01-01 : 元日"));
         assert!(output.contains("2: 2026-12-29 to 2027-01-03 : 年末年始"));
     }
@@ -282,7 +291,7 @@ mod tests {
         add(&path, Some("元日"), Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()), None).unwrap();
         add(&path, Some("建国記念の日"), Some(NaiveDate::from_ymd_opt(2026, 2, 11).unwrap()), None).unwrap();
         remove(&path, Some("元日"), None).unwrap();
-        let output = list(&path).unwrap();
+        let output = list(&path, &[], false).unwrap();
         assert!(!output.contains("元日"));
         assert!(output.contains("建国記念の日"));
     }
@@ -295,7 +304,7 @@ mod tests {
         add(&path, Some("元日"), Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()), None).unwrap();
         add(&path, Some("建国記念の日"), Some(NaiveDate::from_ymd_opt(2026, 2, 11).unwrap()), None).unwrap();
         remove(&path, None, Some(1)).unwrap();
-        let output = list(&path).unwrap();
+        let output = list(&path, &[], false).unwrap();
         assert!(!output.contains("元日"));
         assert!(output.contains("建国記念の日"));
     }

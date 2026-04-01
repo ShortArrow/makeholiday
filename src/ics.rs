@@ -133,6 +133,30 @@ pub fn remove_event_by_index(content: &str, index: usize) -> Result<String, Stri
     Ok(format_calendar(&remaining))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SortKey {
+    Start,
+    End,
+    Summary,
+}
+
+pub fn sort_events(events: &[VEvent], keys: &[SortKey], descending: bool) -> Vec<VEvent> {
+    let mut sorted = events.to_vec();
+    sorted.sort_by(|a, b| {
+        let ord = keys
+            .iter()
+            .map(|key| match key {
+                SortKey::Start => a.dtstart.cmp(&b.dtstart),
+                SortKey::End => a.dtend.cmp(&b.dtend),
+                SortKey::Summary => a.summary.cmp(&b.summary),
+            })
+            .find(|o| o.is_ne())
+            .unwrap_or(std::cmp::Ordering::Equal);
+        if descending { ord.reverse() } else { ord }
+    });
+    sorted
+}
+
 pub fn format_event_line(event: &VEvent) -> String {
     let start = event.dtstart;
     let end = event.dtend - chrono::Days::new(1);
@@ -308,5 +332,62 @@ mod tests {
         let cal = format_calendar(&[make_event("a", (2026, 1, 1), (2026, 1, 2), "元日")]);
         assert!(remove_event_by_index(&cal, 0).is_err());
         assert!(remove_event_by_index(&cal, 2).is_err());
+    }
+
+    // sort tests
+    fn unsorted_events() -> Vec<VEvent> {
+        vec![
+            make_event("c", (2026, 5, 3), (2026, 5, 6), "憲法記念日"),
+            make_event("a", (2026, 1, 1), (2026, 1, 2), "元日"),
+            make_event("b", (2026, 2, 11), (2026, 2, 12), "建国記念の日"),
+        ]
+    }
+
+    #[test]
+    fn sort_by_start_asc() {
+        let sorted = sort_events(&unsorted_events(), &[SortKey::Start], false);
+        let summaries: Vec<_> = sorted.iter().map(|e| e.summary.as_str()).collect();
+        assert_eq!(summaries, vec!["元日", "建国記念の日", "憲法記念日"]);
+    }
+
+    #[test]
+    fn sort_by_start_desc() {
+        let sorted = sort_events(&unsorted_events(), &[SortKey::Start], true);
+        let summaries: Vec<_> = sorted.iter().map(|e| e.summary.as_str()).collect();
+        assert_eq!(summaries, vec!["憲法記念日", "建国記念の日", "元日"]);
+    }
+
+    #[test]
+    fn sort_by_end_asc() {
+        let sorted = sort_events(&unsorted_events(), &[SortKey::End], false);
+        let summaries: Vec<_> = sorted.iter().map(|e| e.summary.as_str()).collect();
+        assert_eq!(summaries, vec!["元日", "建国記念の日", "憲法記念日"]);
+    }
+
+    #[test]
+    fn sort_by_summary_asc() {
+        let sorted = sort_events(&unsorted_events(), &[SortKey::Summary], false);
+        let summaries: Vec<_> = sorted.iter().map(|e| e.summary.as_str()).collect();
+        assert_eq!(summaries, vec!["元日", "建国記念の日", "憲法記念日"]);
+    }
+
+    #[test]
+    fn sort_by_summary_desc() {
+        let sorted = sort_events(&unsorted_events(), &[SortKey::Summary], true);
+        let summaries: Vec<_> = sorted.iter().map(|e| e.summary.as_str()).collect();
+        assert_eq!(summaries, vec!["憲法記念日", "建国記念の日", "元日"]);
+    }
+
+    #[test]
+    fn sort_multi_key() {
+        // Two events with same start, different summaries
+        let events = vec![
+            make_event("a", (2026, 1, 1), (2026, 1, 2), "B休日"),
+            make_event("b", (2026, 1, 1), (2026, 1, 2), "A休日"),
+            make_event("c", (2026, 2, 1), (2026, 2, 2), "C休日"),
+        ];
+        let sorted = sort_events(&events, &[SortKey::Start, SortKey::Summary], false);
+        let summaries: Vec<_> = sorted.iter().map(|e| e.summary.as_str()).collect();
+        assert_eq!(summaries, vec!["A休日", "B休日", "C休日"]);
     }
 }

@@ -247,3 +247,73 @@ fn add_with_summary_and_start_does_not_prompt() {
         .success()
         .stdout(predicate::str::contains("1: 2026-01-01 : 元日"));
 }
+
+#[test]
+fn list_sort_by_start_desc() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("test.ics");
+    let file_str = file.to_str().unwrap();
+
+    cmd().args(["init", file_str]).assert().success();
+    cmd()
+        .args(["add", file_str, "--summary", "元日", "--start", "2026-01-01"])
+        .assert()
+        .success();
+    cmd()
+        .args(["add", file_str, "--summary", "憲法記念日", "--start", "2026-05-03"])
+        .assert()
+        .success();
+    cmd()
+        .args(["add", file_str, "--summary", "建国記念の日", "--start", "2026-02-11"])
+        .assert()
+        .success();
+
+    // Default order (insertion order)
+    cmd()
+        .args(["list", file_str])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("1: 2026-01-01 : 元日"));
+
+    // Sort by start ascending
+    cmd()
+        .args(["list", file_str, "--sort", "start"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("1: 2026-01-01 : 元日"));
+
+    // Sort by start descending
+    cmd()
+        .args(["list", file_str, "--sort", "start", "--desc"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("1: 2026-05-03 : 憲法記念日"));
+}
+
+#[test]
+fn list_sort_multi_key() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("test.ics");
+    let file_str = file.to_str().unwrap();
+
+    cmd().args(["init", file_str]).assert().success();
+    cmd()
+        .args(["add", file_str, "--summary", "B休日", "--start", "2026-01-01"])
+        .assert()
+        .success();
+    cmd()
+        .args(["add", file_str, "--summary", "A休日", "--start", "2026-01-01"])
+        .assert()
+        .success();
+    cmd()
+        .args(["add", file_str, "--summary", "C休日", "--start", "2026-02-01"])
+        .assert()
+        .success();
+
+    // Sort by start then summary
+    cmd()
+        .args(["list", file_str, "--sort", "start", "--sort", "summary"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("1: 2026-01-01 : A休日"));
+}

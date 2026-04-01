@@ -15,11 +15,14 @@ fn main() {
             start,
             end,
         } => commands::add(&file, summary.as_deref(), start, end),
-        Commands::List { file } => commands::list(&file).map(|output| {
-            if !output.is_empty() {
-                println!("{output}");
-            }
-        }),
+        Commands::List { file, sort, desc } => {
+            let keys: Vec<_> = sort.iter().map(|s| s.to_sort_key()).collect();
+            commands::list(&file, &keys, desc).map(|output| {
+                if !output.is_empty() {
+                    println!("{output}");
+                }
+            })
+        }
         Commands::Remove {
             file,
             summary,

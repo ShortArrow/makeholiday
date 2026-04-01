@@ -1,7 +1,26 @@
 use std::path::PathBuf;
 
 use chrono::NaiveDate;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+
+use crate::ics::SortKey;
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum SortField {
+    Start,
+    End,
+    Summary,
+}
+
+impl SortField {
+    pub fn to_sort_key(self) -> SortKey {
+        match self {
+            SortField::Start => SortKey::Start,
+            SortField::End => SortKey::End,
+            SortField::Summary => SortKey::Summary,
+        }
+    }
+}
 
 const DEFAULT_FILE: &str = "calendar.ics";
 
@@ -59,6 +78,12 @@ pub enum Commands {
         /// Path to the ICS file (default: calendar.ics)
         #[arg(default_value = DEFAULT_FILE)]
         file: PathBuf,
+        /// Sort by field (repeatable for multi-key sort, e.g. --sort start --sort summary)
+        #[arg(long, value_enum)]
+        sort: Vec<SortField>,
+        /// Sort in descending order
+        #[arg(long, default_value_t = false)]
+        desc: bool,
     },
     /// Remove an event from the calendar
     Remove {
