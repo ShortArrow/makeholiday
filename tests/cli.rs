@@ -161,7 +161,7 @@ fn remove_by_index_cli() {
         .success();
 
     cmd()
-        .args(["-f", file_str, "remove", "--index", "2"])
+        .args(["-f", file_str, "remove", "2"])
         .assert()
         .success();
 

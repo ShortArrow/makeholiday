@@ -23,8 +23,8 @@ fn main() {
                 }
             })
         }
-        Commands::Remove { summary, index } => {
-            commands::remove(file, summary.as_deref(), index)
+        Commands::Remove { target, summary } => {
+            commands::remove(file, summary.as_deref(), target.as_deref())
         }
     };
     if let Err(e) = result {

@@ -81,11 +81,10 @@ pub enum Commands {
     },
     /// Remove an event from the calendar
     Remove {
+        /// Index specifier: "4", "4,6", "6-10", "1,3-5,8" (interactive if omitted)
+        target: Option<String>,
         /// Remove events matching this summary
         #[arg(long)]
         summary: Option<String>,
-        /// Remove event at this index (1-based, from list output)
-        #[arg(long)]
-        index: Option<usize>,
     },
 }

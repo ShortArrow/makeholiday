@@ -116,18 +116,58 @@ pub fn remove_event_by_summary(content: &str, summary: &str) -> Result<String, S
     ))
 }
 
-pub fn remove_event_by_index(content: &str, index: usize) -> Result<String, String> {
+
+/// Parse index specifier: "3", "1,4,6", "3-7", "1,3-5,8"
+/// Returns sorted, deduplicated 1-based indices.
+pub fn parse_indices(input: &str, max: usize) -> Result<Vec<usize>, String> {
+    let mut indices = Vec::new();
+    for part in input.split(',') {
+        let part = part.trim();
+        if let Some((start, end)) = part.split_once('-') {
+            let s: usize = start
+                .trim()
+                .parse()
+                .map_err(|_| format!("Invalid number: {start}"))?;
+            let e: usize = end
+                .trim()
+                .parse()
+                .map_err(|_| format!("Invalid number: {end}"))?;
+            if s == 0 || e == 0 || s > max || e > max {
+                return Err(format!("Index out of range (1-{max})"));
+            }
+            if s > e {
+                return Err(format!("Invalid range: {s}-{e}"));
+            }
+            indices.extend(s..=e);
+        } else {
+            let idx: usize = part
+                .parse()
+                .map_err(|_| format!("Invalid number: {part}"))?;
+            if idx == 0 || idx > max {
+                return Err(format!("Index {idx} out of range (1-{max})"));
+            }
+            indices.push(idx);
+        }
+    }
+    indices.sort();
+    indices.dedup();
+    Ok(indices)
+}
+
+pub fn remove_events_by_indices(content: &str, indices: &[usize]) -> Result<String, String> {
     let events = parse_events(content)?;
-    if index == 0 || index > events.len() {
-        return Err(format!(
-            "Index {index} out of range (1-{})",
-            events.len()
-        ));
+    for &idx in indices {
+        if idx == 0 || idx > events.len() {
+            return Err(format!(
+                "Index {idx} out of range (1-{})",
+                events.len()
+            ));
+        }
     }
     let remaining: Vec<_> = events
         .iter()
         .enumerate()
-        .filter(|(i, _)| *i != index - 1)
+        .filter(|(i, _)| !indices.contains(&(i + 1)))
         .map(|(_, e)| e.clone())
         .collect();
     Ok(format_calendar(&remaining))
@@ -314,24 +354,57 @@ mod tests {
         assert!(result.is_err());
     }
 
+    // parse_indices tests
     #[test]
-    fn remove_by_index() {
-        let events = vec![
-            make_event("a", (2026, 1, 1), (2026, 1, 2), "元日"),
-            make_event("b", (2026, 2, 11), (2026, 2, 12), "建国記念の日"),
-        ];
-        let cal = format_calendar(&events);
-        let result = remove_event_by_index(&cal, 1).unwrap();
-        let parsed = parse_events(&result).unwrap();
-        assert_eq!(parsed.len(), 1);
-        assert_eq!(parsed[0].summary, "建国記念の日");
+    fn parse_indices_single() {
+        assert_eq!(parse_indices("3", 5).unwrap(), vec![3]);
     }
 
     #[test]
-    fn remove_by_index_out_of_range() {
-        let cal = format_calendar(&[make_event("a", (2026, 1, 1), (2026, 1, 2), "元日")]);
-        assert!(remove_event_by_index(&cal, 0).is_err());
-        assert!(remove_event_by_index(&cal, 2).is_err());
+    fn parse_indices_comma() {
+        assert_eq!(parse_indices("4,6", 10).unwrap(), vec![4, 6]);
+    }
+
+    #[test]
+    fn parse_indices_range() {
+        assert_eq!(parse_indices("6-10", 12).unwrap(), vec![6, 7, 8, 9, 10]);
+    }
+
+    #[test]
+    fn parse_indices_mixed() {
+        assert_eq!(parse_indices("1,3-5,8", 10).unwrap(), vec![1, 3, 4, 5, 8]);
+    }
+
+    #[test]
+    fn parse_indices_dedup() {
+        assert_eq!(parse_indices("3,3,3", 5).unwrap(), vec![3]);
+    }
+
+    #[test]
+    fn parse_indices_out_of_range() {
+        assert!(parse_indices("0", 5).is_err());
+        assert!(parse_indices("6", 5).is_err());
+    }
+
+    #[test]
+    fn parse_indices_invalid_range() {
+        assert!(parse_indices("5-3", 10).is_err());
+    }
+
+    // remove_events_by_indices tests
+    #[test]
+    fn remove_multiple_by_indices() {
+        let events = vec![
+            make_event("a", (2026, 1, 1), (2026, 1, 2), "A"),
+            make_event("b", (2026, 2, 1), (2026, 2, 2), "B"),
+            make_event("c", (2026, 3, 1), (2026, 3, 2), "C"),
+            make_event("d", (2026, 4, 1), (2026, 4, 2), "D"),
+        ];
+        let cal = format_calendar(&events);
+        let result = remove_events_by_indices(&cal, &[2, 4]).unwrap();
+        let parsed = parse_events(&result).unwrap();
+        let summaries: Vec<_> = parsed.iter().map(|e| e.summary.as_str()).collect();
+        assert_eq!(summaries, vec!["A", "C"]);
     }
 
     // sort tests

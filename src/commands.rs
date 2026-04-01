@@ -127,14 +127,17 @@ pub fn list(
 pub fn remove(
     file: &Path,
     summary: Option<&str>,
-    index: Option<usize>,
+    target: Option<&str>,
 ) -> Result<(), String> {
     let content =
         std::fs::read_to_string(file).map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
+    let events = ics::parse_events(&content)?;
 
-    let (new_content, removed_desc) = match (summary, index) {
+    let (new_content, removed_desc) = match (summary, target) {
+        (Some(_), Some(_)) => {
+            return Err("Cannot specify both --summary and index target".to_string());
+        }
         (Some(s), None) => {
-            let events = ics::parse_events(&content)?;
             let removed: Vec<_> = events.iter().filter(|e| e.summary == s).collect();
             if removed.is_empty() {
                 return Err(format!("No event found with summary: {s}"));
@@ -146,20 +149,17 @@ pub fn remove(
                 .join(", ");
             (ics::remove_event_by_summary(&content, s)?, desc)
         }
-        (None, Some(idx)) => {
-            let events = ics::parse_events(&content)?;
-            if idx == 0 || idx > events.len() {
-                return Err(format!("Index {idx} out of range (1-{})", events.len()));
-            }
-            let desc = ics::format_event_line(&events[idx - 1]);
-            (ics::remove_event_by_index(&content, idx)?, desc)
-        }
-        (Some(_), Some(_)) => {
-            return Err("Cannot specify both --summary and --index".to_string());
+        (None, Some(spec)) => {
+            let indices = ics::parse_indices(spec, events.len())?;
+            let desc = indices
+                .iter()
+                .map(|&i| ics::format_event_line(&events[i - 1]))
+                .collect::<Vec<_>>()
+                .join(", ");
+            (ics::remove_events_by_indices(&content, &indices)?, desc)
         }
         (None, None) => {
             // Interactive mode
-            let events = ics::parse_events(&content)?;
             if events.is_empty() {
                 return Err("No events to remove".to_string());
             }
@@ -176,14 +176,13 @@ pub fn remove(
             if trimmed == "q" || trimmed.is_empty() {
                 return Ok(());
             }
-            let idx: usize = trimmed
-                .parse()
-                .map_err(|_| format!("Invalid number: {trimmed}"))?;
-            if idx == 0 || idx > events.len() {
-                return Err(format!("Index {idx} out of range (1-{})", events.len()));
-            }
-            let desc = ics::format_event_line(&events[idx - 1]);
-            (ics::remove_event_by_index(&content, idx)?, desc)
+            let indices = ics::parse_indices(trimmed, events.len())?;
+            let desc = indices
+                .iter()
+                .map(|&i| ics::format_event_line(&events[i - 1]))
+                .collect::<Vec<_>>()
+                .join(", ");
+            (ics::remove_events_by_indices(&content, &indices)?, desc)
         }
     };
 
@@ -303,7 +302,7 @@ mod tests {
         init(&path).unwrap();
         add(&path, Some("元日"), Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()), None).unwrap();
         add(&path, Some("建国記念の日"), Some(NaiveDate::from_ymd_opt(2026, 2, 11).unwrap()), None).unwrap();
-        remove(&path, None, Some(1)).unwrap();
+        remove(&path, None, Some("1")).unwrap();
         let output = list(&path, &[], false).unwrap();
         assert!(!output.contains("元日"));
         assert!(output.contains("建国記念の日"));
