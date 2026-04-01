@@ -20,6 +20,7 @@ fn resolve_add_params(
     reader: &mut dyn BufRead,
     writer: &mut dyn Write,
 ) -> Result<(String, NaiveDate, Option<NaiveDate>), String> {
+    let interactive = summary.is_none() || start.is_none();
     let summary = match summary {
         Some(s) => s.to_string(),
         None => {
@@ -46,7 +47,7 @@ fn resolve_add_params(
     };
     let end = match end {
         Some(e) => Some(e),
-        None if summary.is_empty() => None,
+        None if !interactive => None,
         None => {
             write!(writer, "End date (empty for single day): ")
                 .map_err(|e| e.to_string())?;

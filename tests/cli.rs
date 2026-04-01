@@ -225,3 +225,25 @@ fn add_interactive_cli() {
         .success()
         .stdout(predicate::str::contains("2026-01-01 : 元日"));
 }
+
+#[test]
+fn add_with_summary_and_start_does_not_prompt() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("test.ics");
+    let file_str = file.to_str().unwrap();
+
+    cmd().args(["init", file_str]).assert().success();
+
+    // No stdin provided — should succeed without hanging for end date prompt
+    cmd()
+        .args(["add", file_str, "--summary", "元日", "--start", "2026-01-01"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("End date").not());
+
+    cmd()
+        .args(["list", file_str])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1: 2026-01-01 : 元日"));
+}
