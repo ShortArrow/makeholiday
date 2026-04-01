@@ -78,6 +78,9 @@ pub enum Commands {
         /// Sort in descending order
         #[arg(long, default_value_t = false)]
         desc: bool,
+        /// Output as JSON
+        #[arg(long, default_value_t = false)]
+        json: bool,
     },
     /// Remove an event from the calendar
     Remove {

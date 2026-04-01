@@ -15,9 +15,9 @@ fn main() {
             start,
             end,
         } => commands::add(file, summary.as_deref(), start, end),
-        Commands::List { sort, desc } => {
+        Commands::List { sort, desc, json } => {
             let keys: Vec<_> = sort.iter().map(|s| s.to_sort_key()).collect();
-            commands::list(file, &keys, desc).map(|output| {
+            commands::list(file, &keys, desc, json).map(|output| {
                 if !output.is_empty() {
                     println!("{output}");
                 }

@@ -1,12 +1,24 @@
 use chrono::{NaiveDate, NaiveDateTime};
+use serde::Serialize;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VEvent {
     pub uid: String,
+    #[serde(serialize_with = "serialize_dtstamp")]
     pub dtstamp: NaiveDateTime,
+    #[serde(serialize_with = "serialize_date")]
     pub dtstart: NaiveDate,
+    #[serde(serialize_with = "serialize_date")]
     pub dtend: NaiveDate,
     pub summary: String,
+}
+
+fn serialize_date<S: serde::Serializer>(date: &NaiveDate, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(&date.format("%Y-%m-%d").to_string())
+}
+
+fn serialize_dtstamp<S: serde::Serializer>(dt: &NaiveDateTime, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(&dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
 
 pub fn vcalendar_header() -> String {

@@ -106,6 +106,7 @@ pub fn list(
     file: &Path,
     sort_keys: &[ics::SortKey],
     descending: bool,
+    json: bool,
 ) -> Result<String, String> {
     let content =
         std::fs::read_to_string(file).map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
@@ -115,13 +116,17 @@ pub fn list(
     } else {
         ics::sort_events(&events, sort_keys, descending)
     };
-    let output = events
-        .iter()
-        .enumerate()
-        .map(|(i, e)| format!("{}: {}", i + 1, ics::format_event_line(e)))
-        .collect::<Vec<_>>()
-        .join("\n");
-    Ok(output)
+    if json {
+        serde_json::to_string_pretty(&events).map_err(|e| format!("JSON error: {e}"))
+    } else {
+        let output = events
+            .iter()
+            .enumerate()
+            .map(|(i, e)| format!("{}: {}", i + 1, ics::format_event_line(e)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Ok(output)
+    }
 }
 
 pub fn remove(
@@ -263,7 +268,7 @@ mod tests {
             Some(NaiveDate::from_ymd_opt(2027, 1, 3).unwrap()),
         )
         .unwrap();
-        let output = list(&path, &[], false).unwrap();
+        let output = list(&path, &[], false, false).unwrap();
         assert!(output.contains("1: 2026-01-01 : 元日"));
         assert!(output.contains("2: 2026-12-29 to 2027-01-03 : 年末年始"));
     }
@@ -290,7 +295,7 @@ mod tests {
         add(&path, Some("元日"), Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()), None).unwrap();
         add(&path, Some("建国記念の日"), Some(NaiveDate::from_ymd_opt(2026, 2, 11).unwrap()), None).unwrap();
         remove(&path, Some("元日"), None).unwrap();
-        let output = list(&path, &[], false).unwrap();
+        let output = list(&path, &[], false, false).unwrap();
         assert!(!output.contains("元日"));
         assert!(output.contains("建国記念の日"));
     }
@@ -303,7 +308,7 @@ mod tests {
         add(&path, Some("元日"), Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()), None).unwrap();
         add(&path, Some("建国記念の日"), Some(NaiveDate::from_ymd_opt(2026, 2, 11).unwrap()), None).unwrap();
         remove(&path, None, Some("1")).unwrap();
-        let output = list(&path, &[], false).unwrap();
+        let output = list(&path, &[], false, false).unwrap();
         assert!(!output.contains("元日"));
         assert!(output.contains("建国記念の日"));
     }

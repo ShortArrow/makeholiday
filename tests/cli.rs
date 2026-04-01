@@ -332,3 +332,30 @@ fn file_option_after_subcommand_also_works() {
         .success()
         .stdout(predicate::str::contains("元日"));
 }
+
+#[test]
+fn list_json_output() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("test.ics");
+    let file_str = file.to_str().unwrap();
+
+    cmd().args(["-f", file_str, "init"]).assert().success();
+    cmd()
+        .args(["-f", file_str, "add", "--summary", "元日", "--start", "2026-01-01"])
+        .assert()
+        .success();
+
+    let output = cmd()
+        .args(["-f", file_str, "list", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value = serde_json::from_slice(&output).expect("valid JSON");
+    let arr = json.as_array().expect("JSON array");
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["summary"], "元日");
+    assert_eq!(arr[0]["dtstart"], "2026-01-01");
+    assert_eq!(arr[0]["dtend"], "2026-01-02");
+}
