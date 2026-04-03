@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand, ValueEnum};
 
-use crate::ics::SortKey;
+use crate::ics::{BusyStatus, EventClass, SortKey};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SortField {
@@ -18,6 +18,44 @@ impl SortField {
             SortField::Start => SortKey::Start,
             SortField::End => SortKey::End,
             SortField::Summary => SortKey::Summary,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum CliBusyStatus {
+    Free,
+    Tentative,
+    Busy,
+    Oof,
+    Working,
+}
+
+impl CliBusyStatus {
+    pub fn to_busystatus(self) -> BusyStatus {
+        match self {
+            CliBusyStatus::Free => BusyStatus::Free,
+            CliBusyStatus::Tentative => BusyStatus::Tentative,
+            CliBusyStatus::Busy => BusyStatus::Busy,
+            CliBusyStatus::Oof => BusyStatus::Oof,
+            CliBusyStatus::Working => BusyStatus::WorkingElsewhere,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum CliEventClass {
+    Public,
+    Private,
+    Confidential,
+}
+
+impl CliEventClass {
+    pub fn to_event_class(self) -> EventClass {
+        match self {
+            CliEventClass::Public => EventClass::Public,
+            CliEventClass::Private => EventClass::Private,
+            CliEventClass::Confidential => EventClass::Confidential,
         }
     }
 }
@@ -69,6 +107,12 @@ pub enum Commands {
         /// End date (YYYY-MM-DD or YYYY/M/D, inclusive). Omit for single-day event
         #[arg(long, value_parser = parse_date)]
         end: Option<NaiveDate>,
+        /// Busy status: free, tentative, busy, oof, working (default: free)
+        #[arg(long, value_enum, default_value_t = CliBusyStatus::Free)]
+        busystatus: CliBusyStatus,
+        /// Event class: public, private, confidential
+        #[arg(long, value_enum)]
+        class: Option<CliEventClass>,
     },
     /// List all events in the calendar
     List {

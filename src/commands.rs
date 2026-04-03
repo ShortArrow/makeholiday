@@ -70,6 +70,8 @@ pub fn add(
     summary: Option<&str>,
     start: Option<NaiveDate>,
     end: Option<NaiveDate>,
+    busystatus: ics::BusyStatus,
+    class: Option<ics::EventClass>,
 ) -> Result<(), String> {
     let stdin = io::stdin();
     let mut reader = stdin.lock();
@@ -92,6 +94,8 @@ pub fn add(
         dtstart: start,
         dtend,
         summary,
+        busystatus,
+        class,
     };
 
     let new_content = ics::insert_event(&content, &event)?;
@@ -224,12 +228,16 @@ mod tests {
         assert!(result.unwrap_err().contains("already exists"));
     }
 
+    fn add_free(path: &std::path::Path, summary: &str, start: NaiveDate, end: Option<NaiveDate>) {
+        add(path, Some(summary), Some(start), end, ics::BusyStatus::Free, None).unwrap();
+    }
+
     #[test]
     fn add_one_event() {
         let dir = TempDir::new().unwrap();
         let path = temp_file(&dir, "test.ics");
         init(&path).unwrap();
-        add(&path, Some("元日"), Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()), None).unwrap();
+        add_free(&path, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), None);
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("SUMMARY:元日"));
         assert!(content.contains("BEGIN:VEVENT"));
@@ -241,14 +249,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = temp_file(&dir, "test.ics");
         init(&path).unwrap();
-        add(&path, Some("元日"), Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()), None).unwrap();
-        add(
-            &path,
-            Some("建国記念の日"),
-            Some(NaiveDate::from_ymd_opt(2026, 2, 11).unwrap()),
-            None,
-        )
-        .unwrap();
+        add_free(&path, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), None);
+        add_free(&path, "建国記念の日", NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(), None);
         let content = std::fs::read_to_string(&path).unwrap();
         let events = ics::parse_events(&content).unwrap();
         assert_eq!(events.len(), 2);
@@ -260,14 +262,13 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = temp_file(&dir, "test.ics");
         init(&path).unwrap();
-        add(&path, Some("元日"), Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()), None).unwrap();
-        add(
+        add_free(&path, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), None);
+        add_free(
             &path,
-            Some("年末年始"),
-            Some(NaiveDate::from_ymd_opt(2026, 12, 29).unwrap()),
+            "年末年始",
+            NaiveDate::from_ymd_opt(2026, 12, 29).unwrap(),
             Some(NaiveDate::from_ymd_opt(2027, 1, 3).unwrap()),
-        )
-        .unwrap();
+        );
         let output = list(&path, &[], false, false).unwrap();
         assert!(output.contains("1: 2026-01-01 : 元日"));
         assert!(output.contains("2: 2026-12-29 to 2027-01-03 : 年末年始"));
@@ -283,6 +284,8 @@ mod tests {
             Some("invalid"),
             Some(NaiveDate::from_ymd_opt(2026, 3, 1).unwrap()),
             Some(NaiveDate::from_ymd_opt(2026, 2, 1).unwrap()),
+            ics::BusyStatus::Free,
+            None,
         );
         assert!(result.is_err());
     }
@@ -292,8 +295,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = temp_file(&dir, "test.ics");
         init(&path).unwrap();
-        add(&path, Some("元日"), Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()), None).unwrap();
-        add(&path, Some("建国記念の日"), Some(NaiveDate::from_ymd_opt(2026, 2, 11).unwrap()), None).unwrap();
+        add_free(&path, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), None);
+        add_free(&path, "建国記念の日", NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(), None);
         remove(&path, Some("元日"), None).unwrap();
         let output = list(&path, &[], false, false).unwrap();
         assert!(!output.contains("元日"));
@@ -305,11 +308,31 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = temp_file(&dir, "test.ics");
         init(&path).unwrap();
-        add(&path, Some("元日"), Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()), None).unwrap();
-        add(&path, Some("建国記念の日"), Some(NaiveDate::from_ymd_opt(2026, 2, 11).unwrap()), None).unwrap();
+        add_free(&path, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), None);
+        add_free(&path, "建国記念の日", NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(), None);
         remove(&path, None, Some("1")).unwrap();
         let output = list(&path, &[], false, false).unwrap();
         assert!(!output.contains("元日"));
         assert!(output.contains("建国記念の日"));
+    }
+
+    #[test]
+    fn add_with_busystatus_and_class() {
+        let dir = TempDir::new().unwrap();
+        let path = temp_file(&dir, "test.ics");
+        init(&path).unwrap();
+        add(
+            &path,
+            Some("不在"),
+            Some(NaiveDate::from_ymd_opt(2026, 8, 1).unwrap()),
+            None,
+            ics::BusyStatus::Oof,
+            Some(ics::EventClass::Private),
+        )
+        .unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("X-MICROSOFT-CDO-BUSYSTATUS:OOF"));
+        assert!(content.contains("TRANSP:OPAQUE"));
+        assert!(content.contains("CLASS:PRIVATE"));
     }
 }

@@ -14,7 +14,16 @@ fn main() {
             summary,
             start,
             end,
-        } => commands::add(file, summary.as_deref(), start, end),
+            busystatus,
+            class,
+        } => commands::add(
+            file,
+            summary.as_deref(),
+            start,
+            end,
+            busystatus.to_busystatus(),
+            class.map(|c| c.to_event_class()),
+        ),
         Commands::List { sort, desc, json } => {
             let keys: Vec<_> = sort.iter().map(|s| s.to_sort_key()).collect();
             commands::list(file, &keys, desc, json).map(|output| {

@@ -1,6 +1,74 @@
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::Serialize;
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BusyStatus {
+    Free,
+    Tentative,
+    Busy,
+    Oof,
+    #[serde(rename = "working")]
+    WorkingElsewhere,
+}
+
+impl BusyStatus {
+    pub fn transp(self) -> &'static str {
+        match self {
+            BusyStatus::Free => "TRANSPARENT",
+            _ => "OPAQUE",
+        }
+    }
+
+    pub fn cdo_value(self) -> &'static str {
+        match self {
+            BusyStatus::Free => "FREE",
+            BusyStatus::Tentative => "TENTATIVE",
+            BusyStatus::Busy => "BUSY",
+            BusyStatus::Oof => "OOF",
+            BusyStatus::WorkingElsewhere => "WORKINGELSEWHERE",
+        }
+    }
+
+    pub fn from_cdo(s: &str) -> Option<Self> {
+        match s {
+            "FREE" => Some(BusyStatus::Free),
+            "TENTATIVE" => Some(BusyStatus::Tentative),
+            "BUSY" => Some(BusyStatus::Busy),
+            "OOF" => Some(BusyStatus::Oof),
+            "WORKINGELSEWHERE" => Some(BusyStatus::WorkingElsewhere),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EventClass {
+    Public,
+    Private,
+    Confidential,
+}
+
+impl EventClass {
+    pub fn ics_value(self) -> &'static str {
+        match self {
+            EventClass::Public => "PUBLIC",
+            EventClass::Private => "PRIVATE",
+            EventClass::Confidential => "CONFIDENTIAL",
+        }
+    }
+
+    pub fn from_ics(s: &str) -> Option<Self> {
+        match s {
+            "PUBLIC" => Some(EventClass::Public),
+            "PRIVATE" => Some(EventClass::Private),
+            "CONFIDENTIAL" => Some(EventClass::Confidential),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VEvent {
     pub uid: String,
@@ -11,6 +79,9 @@ pub struct VEvent {
     #[serde(serialize_with = "serialize_date")]
     pub dtend: NaiveDate,
     pub summary: String,
+    pub busystatus: BusyStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub class: Option<EventClass>,
 }
 
 fn serialize_date<S: serde::Serializer>(date: &NaiveDate, s: S) -> Result<S::Ok, S::Error> {
@@ -30,14 +101,23 @@ pub fn vcalendar_footer() -> String {
 }
 
 pub fn format_vevent(event: &VEvent) -> String {
-    format!(
-        "BEGIN:VEVENT\r\nUID:{}\r\nDTSTAMP:{}\r\nDTSTART;VALUE=DATE:{}\r\nDTEND;VALUE=DATE:{}\r\nSUMMARY:{}\r\nTRANSP:TRANSPARENT\r\nEND:VEVENT\r\n",
-        event.uid,
-        event.dtstamp.format("%Y%m%dT%H%M%SZ"),
-        event.dtstart.format("%Y%m%d"),
-        event.dtend.format("%Y%m%d"),
-        event.summary,
-    )
+    let mut lines = vec![
+        "BEGIN:VEVENT".to_string(),
+        format!("UID:{}", event.uid),
+        format!("DTSTAMP:{}", event.dtstamp.format("%Y%m%dT%H%M%SZ")),
+        format!("DTSTART;VALUE=DATE:{}", event.dtstart.format("%Y%m%d")),
+        format!("DTEND;VALUE=DATE:{}", event.dtend.format("%Y%m%d")),
+        format!("SUMMARY:{}", event.summary),
+        format!("TRANSP:{}", event.busystatus.transp()),
+        format!("X-MICROSOFT-CDO-BUSYSTATUS:{}", event.busystatus.cdo_value()),
+    ];
+    if let Some(class) = event.class {
+        lines.push(format!("CLASS:{}", class.ics_value()));
+    }
+    lines.push("END:VEVENT".to_string());
+    let mut out = lines.join("\r\n");
+    out.push_str("\r\n");
+    out
 }
 
 pub fn format_calendar(events: &[VEvent]) -> String {
@@ -58,6 +138,8 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
     let mut dtstart: Option<NaiveDate> = None;
     let mut dtend: Option<NaiveDate> = None;
     let mut summary = String::new();
+    let mut busystatus = BusyStatus::Free;
+    let mut class: Option<EventClass> = None;
 
     for line in normalized.lines() {
         let line = line.trim();
@@ -68,6 +150,8 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
             dtstart = None;
             dtend = None;
             summary.clear();
+            busystatus = BusyStatus::Free;
+            class = None;
         } else if line == "END:VEVENT" && in_event {
             let stamp = dtstamp.ok_or("VEVENT missing DTSTAMP")?;
             let start = dtstart.ok_or("VEVENT missing DTSTART")?;
@@ -78,6 +162,8 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
                 dtstart: start,
                 dtend: end,
                 summary: summary.clone(),
+                busystatus,
+                class,
             });
             in_event = false;
         } else if in_event {
@@ -100,6 +186,12 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
                 );
             } else if let Some(val) = line.strip_prefix("SUMMARY:") {
                 summary = val.to_string();
+            } else if let Some(val) = line.strip_prefix("X-MICROSOFT-CDO-BUSYSTATUS:") {
+                if let Some(bs) = BusyStatus::from_cdo(val) {
+                    busystatus = bs;
+                }
+            } else if let Some(val) = line.strip_prefix("CLASS:") {
+                class = EventClass::from_ics(val);
             }
         }
     }
@@ -243,6 +335,8 @@ mod tests {
             dtstart: NaiveDate::from_ymd_opt(start.0, start.1, start.2).unwrap(),
             dtend: NaiveDate::from_ymd_opt(end.0, end.1, end.2).unwrap(),
             summary: summary.to_string(),
+            busystatus: BusyStatus::Free,
+            class: None,
         }
     }
 
@@ -270,8 +364,11 @@ mod tests {
         assert!(output.contains("DTEND;VALUE=DATE:20260102\r\n"));
         assert!(output.contains("SUMMARY:元日\r\n"));
         assert!(output.contains("TRANSP:TRANSPARENT\r\n"));
+        assert!(output.contains("X-MICROSOFT-CDO-BUSYSTATUS:FREE\r\n"));
         assert!(output.contains("UID:test-uid-1\r\n"));
         assert!(output.contains("END:VEVENT\r\n"));
+        // Default: no CLASS output
+        assert!(!output.contains("CLASS:"));
     }
 
     #[test]
@@ -280,6 +377,29 @@ mod tests {
         let output = format_vevent(&event);
         assert!(output.contains("DTSTART;VALUE=DATE:20261229"));
         assert!(output.contains("DTEND;VALUE=DATE:20270104"));
+    }
+
+    #[test]
+    fn format_vevent_oof_private() {
+        let mut event = make_event("oof-1", (2026, 8, 1), (2026, 8, 2), "不在");
+        event.busystatus = BusyStatus::Oof;
+        event.class = Some(EventClass::Private);
+        let output = format_vevent(&event);
+        assert!(output.contains("TRANSP:OPAQUE\r\n"));
+        assert!(output.contains("X-MICROSOFT-CDO-BUSYSTATUS:OOF\r\n"));
+        assert!(output.contains("CLASS:PRIVATE\r\n"));
+    }
+
+    #[test]
+    fn parse_roundtrip_with_busystatus_and_class() {
+        let mut event = make_event("rt-bs", (2026, 5, 1), (2026, 5, 2), "出張");
+        event.busystatus = BusyStatus::WorkingElsewhere;
+        event.class = Some(EventClass::Confidential);
+        let cal = format_calendar(&[event.clone()]);
+        let parsed = parse_events(&cal).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].busystatus, BusyStatus::WorkingElsewhere);
+        assert_eq!(parsed[0].class, Some(EventClass::Confidential));
     }
 
     #[test]
