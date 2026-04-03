@@ -132,6 +132,8 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         json: bool,
     },
+    /// List available preset icon names
+    Icons,
     /// Remove an event from the calendar
     Remove {
         /// Index specifier: "4", "4,6", "6-10", "1,3-5,8" (interactive if omitted)

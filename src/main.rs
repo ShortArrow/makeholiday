@@ -36,6 +36,10 @@ fn main() {
                 }
             })
         }
+        Commands::Icons => {
+            println!("{}", ics::format_icons_list());
+            Ok(())
+        }
         Commands::Remove { target, summary } => {
             commands::remove(file, summary.as_deref(), target.as_deref())
         }

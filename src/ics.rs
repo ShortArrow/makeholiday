@@ -96,6 +96,29 @@ fn serialize_dtstamp<S: serde::Serializer>(dt: &NaiveDateTime, s: S) -> Result<S
     s.serialize_str(&dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
 
+pub const PRESET_ICONS: &[(&str, &str)] = &[
+    ("airplane", "出張・旅行"),
+    ("birthday", "誕生日"),
+    ("star", "お気に入り"),
+    ("heart", "記念日"),
+    ("gift", "プレゼント"),
+    ("vacation", "休暇"),
+    ("meeting", "会議"),
+    ("deadline", "締め切り"),
+    ("medical", "通院"),
+    ("school", "学校行事"),
+    ("sports", "スポーツ"),
+    ("music", "音楽・ライブ"),
+];
+
+pub fn format_icons_list() -> String {
+    PRESET_ICONS
+        .iter()
+        .map(|(name, desc)| format!("{name:<12} {desc}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 pub fn vcalendar_header() -> String {
     "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//makeholiday//EN\r\n".to_string()
 }
