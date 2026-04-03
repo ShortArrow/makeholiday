@@ -113,6 +113,12 @@ pub enum Commands {
         /// Event class: public, private, confidential
         #[arg(long, value_enum)]
         class: Option<CliEventClass>,
+        /// Category (repeatable, e.g. --category 仕事 --category 出張)
+        #[arg(long)]
+        category: Vec<String>,
+        /// Icon name (e.g. --icon airplane)
+        #[arg(long)]
+        icon: Option<String>,
     },
     /// List all events in the calendar
     List {

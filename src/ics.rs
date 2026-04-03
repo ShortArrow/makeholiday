@@ -82,6 +82,10 @@ pub struct VEvent {
     pub busystatus: BusyStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub class: Option<EventClass>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub categories: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 fn serialize_date<S: serde::Serializer>(date: &NaiveDate, s: S) -> Result<S::Ok, S::Error> {
@@ -114,6 +118,12 @@ pub fn format_vevent(event: &VEvent) -> String {
     if let Some(class) = event.class {
         lines.push(format!("CLASS:{}", class.ics_value()));
     }
+    if !event.categories.is_empty() {
+        lines.push(format!("CATEGORIES:{}", event.categories.join(",")));
+    }
+    if let Some(ref icon) = event.icon {
+        lines.push(format!("X-MAKEHOLIDAY-ICON:{icon}"));
+    }
     lines.push("END:VEVENT".to_string());
     let mut out = lines.join("\r\n");
     out.push_str("\r\n");
@@ -140,6 +150,8 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
     let mut summary = String::new();
     let mut busystatus = BusyStatus::Free;
     let mut class: Option<EventClass> = None;
+    let mut categories: Vec<String> = Vec::new();
+    let mut icon: Option<String> = None;
 
     for line in normalized.lines() {
         let line = line.trim();
@@ -152,6 +164,8 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
             summary.clear();
             busystatus = BusyStatus::Free;
             class = None;
+            categories.clear();
+            icon = None;
         } else if line == "END:VEVENT" && in_event {
             let stamp = dtstamp.ok_or("VEVENT missing DTSTAMP")?;
             let start = dtstart.ok_or("VEVENT missing DTSTART")?;
@@ -164,6 +178,8 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
                 summary: summary.clone(),
                 busystatus,
                 class,
+                categories: categories.clone(),
+                icon: icon.clone(),
             });
             in_event = false;
         } else if in_event {
@@ -192,6 +208,10 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
                 }
             } else if let Some(val) = line.strip_prefix("CLASS:") {
                 class = EventClass::from_ics(val);
+            } else if let Some(val) = line.strip_prefix("CATEGORIES:") {
+                categories = val.split(',').map(|s| s.trim().to_string()).collect();
+            } else if let Some(val) = line.strip_prefix("X-MAKEHOLIDAY-ICON:") {
+                icon = Some(val.to_string());
             }
         }
     }
@@ -304,16 +324,17 @@ pub fn sort_events(events: &[VEvent], keys: &[SortKey], descending: bool) -> Vec
 pub fn format_event_line(event: &VEvent) -> String {
     let start = event.dtstart;
     let end = event.dtend - chrono::Days::new(1);
-    if start == end {
-        format!("{} : {}", start.format("%Y-%m-%d"), event.summary)
+    let date_part = if start == end {
+        format!("{}", start.format("%Y-%m-%d"))
     } else {
-        format!(
-            "{} to {} : {}",
-            start.format("%Y-%m-%d"),
-            end.format("%Y-%m-%d"),
-            event.summary
-        )
-    }
+        format!("{} to {}", start.format("%Y-%m-%d"), end.format("%Y-%m-%d"))
+    };
+    let icon_part = event
+        .icon
+        .as_ref()
+        .map(|i| format!(" [{i}]"))
+        .unwrap_or_default();
+    format!("{date_part} : {}{icon_part}", event.summary)
 }
 
 #[cfg(test)]
@@ -337,6 +358,8 @@ mod tests {
             summary: summary.to_string(),
             busystatus: BusyStatus::Free,
             class: None,
+            categories: vec![],
+            icon: None,
         }
     }
 
@@ -400,6 +423,36 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].busystatus, BusyStatus::WorkingElsewhere);
         assert_eq!(parsed[0].class, Some(EventClass::Confidential));
+    }
+
+    #[test]
+    fn format_and_parse_categories_and_icon() {
+        let mut event = make_event("cat-1", (2026, 6, 15), (2026, 6, 16), "出張");
+        event.categories = vec!["仕事".to_string(), "出張".to_string()];
+        event.icon = Some("airplane".to_string());
+        let output = format_vevent(&event);
+        assert!(output.contains("CATEGORIES:仕事,出張\r\n"));
+        assert!(output.contains("X-MAKEHOLIDAY-ICON:airplane\r\n"));
+
+        let cal = format_calendar(&[event.clone()]);
+        let parsed = parse_events(&cal).unwrap();
+        assert_eq!(parsed[0].categories, vec!["仕事", "出張"]);
+        assert_eq!(parsed[0].icon, Some("airplane".to_string()));
+    }
+
+    #[test]
+    fn format_event_line_no_categories_no_icon() {
+        let event = make_event("x", (2026, 1, 1), (2026, 1, 2), "元日");
+        let output = format_vevent(&event);
+        assert!(!output.contains("CATEGORIES:"));
+        assert!(!output.contains("X-MAKEHOLIDAY-ICON:"));
+    }
+
+    #[test]
+    fn format_event_line_with_icon() {
+        let mut event = make_event("x", (2026, 6, 15), (2026, 6, 16), "出張");
+        event.icon = Some("airplane".to_string());
+        assert_eq!(format_event_line(&event), "2026-06-15 : 出張 [airplane]");
     }
 
     #[test]

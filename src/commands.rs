@@ -72,6 +72,8 @@ pub fn add(
     end: Option<NaiveDate>,
     busystatus: ics::BusyStatus,
     class: Option<ics::EventClass>,
+    categories: Vec<String>,
+    icon: Option<String>,
 ) -> Result<(), String> {
     let stdin = io::stdin();
     let mut reader = stdin.lock();
@@ -96,6 +98,8 @@ pub fn add(
         summary,
         busystatus,
         class,
+        categories,
+        icon,
     };
 
     let new_content = ics::insert_event(&content, &event)?;
@@ -229,7 +233,7 @@ mod tests {
     }
 
     fn add_free(path: &std::path::Path, summary: &str, start: NaiveDate, end: Option<NaiveDate>) {
-        add(path, Some(summary), Some(start), end, ics::BusyStatus::Free, None).unwrap();
+        add(path, Some(summary), Some(start), end, ics::BusyStatus::Free, None, vec![], None).unwrap();
     }
 
     #[test]
@@ -286,6 +290,8 @@ mod tests {
             Some(NaiveDate::from_ymd_opt(2026, 2, 1).unwrap()),
             ics::BusyStatus::Free,
             None,
+            vec![],
+            None,
         );
         assert!(result.is_err());
     }
@@ -328,6 +334,8 @@ mod tests {
             None,
             ics::BusyStatus::Oof,
             Some(ics::EventClass::Private),
+            vec![],
+            None,
         )
         .unwrap();
         let content = std::fs::read_to_string(&path).unwrap();
