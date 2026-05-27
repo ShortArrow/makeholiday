@@ -104,6 +104,8 @@ See [docs/PRD.md](docs/PRD.md) for product direction (CRUD enhancement, Outlook 
 
 ## Documentation
 
+- [SETUP](docs/SETUP.md) — installation and platform setup
+- [USAGE](docs/USAGE.md) — comprehensive command reference
 - [PRD](docs/PRD.md) — product requirements
 - [ADR policy](docs/design/000-ADR-policy.md) — how architectural decisions are recorded
 - [CONTRIBUTING](docs/CONTRIBUTING.md) — development guidelines

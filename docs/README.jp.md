@@ -104,9 +104,11 @@ makeholiday remove
 
 ## ドキュメント
 
-- [PRD](PRD.md) — プロダクト要件定義
+- [SETUP](SETUP.jp.md) — インストールとプラットフォームセットアップ
+- [USAGE](USAGE.jp.md) — 全コマンドリファレンス
+- [PRD](PRD.jp.md) — プロダクト要件定義
 - [ADR ポリシー](design/000-ADR-policy.md) — アーキテクチャ判断の記録方針
-- [CONTRIBUTING](CONTRIBUTING.md) — 開発ガイドライン
+- [CONTRIBUTING](CONTRIBUTING.jp.md) — 開発ガイドライン
 - [English README](../README.md)
 
 ## コントリビュート
