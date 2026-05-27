@@ -20,7 +20,7 @@ In practice, users who simply want to assemble or edit `.ics` files — for pers
 In priority order:
 
 1. **CLI UX (highest priority).** The CLI must be pleasant to use for everyday calendar authoring — discoverable subcommands, sensible defaults, both scriptable (full flags) and interactive modes. UX considerations override architectural neatness when they conflict.
-2. **Round-trip losslessness.** Reading and re-emitting an ICS file preserves order, whitespace where semantically meaningful, and *all* properties — including unknown and vendor-specific ones. A file passed through `makeholiday` is recognizable to its origin tool. See [ADR-001](design/001-vendor-extension-typing.md) for the typing-level commitments; ordering semantics are deferred to ADR-002.
+2. **Round-trip losslessness.** Reading and re-emitting an ICS file preserves order, whitespace where semantically meaningful, and *all* properties — including unknown and vendor-specific ones. A file passed through `makeholiday` is recognizable to its origin tool. See [ADR-001](design/001-vendor-extension-typing.md) for the typing-level commitments; ordering semantics are deferred to a future round-trip strategy ADR.
 3. **Typed handling of vendor extensions.** Outlook / Google / iCloud extensions are modeled as distinct, type-safe values, not as raw `X-*` strings. The boundary between RFC 5545 and each vendor profile is explicit in the code and documented. See [ADR-001](design/001-vendor-extension-typing.md) for the model.
 4. **Library reusability.** The ICS handling core is consumable as an independent crate, so other tools can depend on it without pulling in CLI machinery.
 
@@ -70,7 +70,7 @@ Items are listed in approximate priority. Acceptance criteria to be expanded as 
 - **Vendor extension support — Google profile.** First-class types for `X-GOOGLE-*` and Google-specific value handling. Typing model defined in [ADR-001](design/001-vendor-extension-typing.md).
 - **Vendor extension support — iCloud profile.** First-class types for Apple-specific extensions (`X-APPLE-*`, `X-CALENDARSERVER-*`). Typing model defined in [ADR-001](design/001-vendor-extension-typing.md).
 - **RFC ↔ vendor extension boundary documentation.** A reference document, generated where possible from code, listing which properties live in RFC 5545 and which belong to which vendor profile. Boundary rules captured in [ADR-001](design/001-vendor-extension-typing.md).
-- **Reusable ICS handling library (crate split).** Extract `src/ics.rs` (and the typed extension model) into a separately publishable crate. The CLI becomes a thin layer on top. The type shape is fixed by [ADR-001](design/001-vendor-extension-typing.md); the split timing is the subject of a future ADR-004.
+- **Reusable ICS handling library (crate split).** Extract `src/ics.rs` (and the typed extension model) into a separately publishable crate. The CLI becomes a thin layer on top. The type shape is fixed by [ADR-001](design/001-vendor-extension-typing.md); the split timing is the subject of a future crate-split ADR.
 - **Task management properties (`VTODO`, candidate).** Because `makeholiday` is positioned as a general ICS CLI, `VTODO` support is on the table; scope is not yet committed.
 - **TUI front-end (candidate).** An interactive terminal UI may be added if CLI UX hits its ceiling. Not in scope today but not ruled out.
 

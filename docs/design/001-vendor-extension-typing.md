@@ -78,7 +78,7 @@ pub struct RawProperty {
     pub name:   String,                  // UPPERCASE-normalized
     pub params: Vec<(String, String)>,   // names UPPERCASE-normalized, order preserved, multi-value params split into multiple entries
     pub value:  String,                  // raw value, no escape interpretation
-    pub source_index: u32,               // semantics defined in ADR-002
+    pub source_index: u32,               // semantics defined in a future round-trip strategy ADR
 }
 
 pub struct RawComponent {
@@ -106,7 +106,7 @@ pub struct EventExtensions {       // per-vendor
    - `google`:    `["X-GOOGLE-"]`
    - `icloud`:    `["X-APPLE-", "X-CALENDARSERVER-"]`
    - `makeholiday`: `["X-MAKEHOLIDAY-"]`
-   - `X-WR-*` (shared by Apple Calendar and Mozilla Lightning, calendar-level only) is **out of scope for this ADR** and handled in ADR-002 alongside `VCALENDAR`-level prefix mapping.
+   - `X-WR-*` (shared by Apple Calendar and Mozilla Lightning, calendar-level only) is **out of scope for this ADR** and handled in a future round-trip strategy ADR alongside `VCALENDAR`-level prefix mapping.
 
 3. **Longest prefix wins.** `X-MICROSOFT-CDO-BUSYSTATUS` matches `X-MICROSOFT-CDO-` before `X-MICROSOFT-`. Both happen to route to `microsoft`; the rule is stated for correctness when ambiguous.
 
@@ -121,7 +121,7 @@ pub struct EventExtensions {       // per-vendor
 
 7. **Cross-vendor synonyms are not auto-translated.** If both `X-MICROSOFT-CDO-BUSYSTATUS` and a Google equivalent are present, both are preserved in their respective bundles. The CLI surface decides which to display.
 
-8. **Cardinality follows RFC 5545.** Single-occurrence properties → `Option<T>` or `T`; multi-occurrence → `Vec<T>`. If a single-occurrence property appears more than once in the input, the first wins; subsequent occurrences are stashed in `vendor.unrecognized` (vendor properties) or `unknown` (otherwise) as `RawProperty`, preserving round-trip. A warning is written to stderr; exit code remains 0. A future `--strict` flag (ADR-007) may turn this into a hard error.
+8. **Cardinality follows RFC 5545.** Single-occurrence properties → `Option<T>` or `T`; multi-occurrence → `Vec<T>`. If a single-occurrence property appears more than once in the input, the first wins; subsequent occurrences are stashed in `vendor.unrecognized` (vendor properties) or `unknown` (otherwise) as `RawProperty`, preserving round-trip. A warning is written to stderr; exit code remains 0. A future `--strict` flag (subject of a future CLI policy ADR) may turn this into a hard error.
 
 9. **Required-field handling is RFC-loose.** A typed `VEvent` requires `UID`, `DTSTAMP`, and `DTSTART`. `DTEND` is optional (single-point events are allowed). If any of the three required fields is missing or the property cannot be parsed in date-only form, the entire `VEVENT` is downgraded to `RawComponent` under `VCalendar.unrecognized_components` and a warning is written to stderr.
 
@@ -134,10 +134,10 @@ pub struct EventExtensions {       // per-vendor
 
 ### Out of scope for this ADR
 
-- **Property order on output and source-order preservation semantics** — `RawProperty.source_index` is reserved here; its semantics are defined in ADR-002.
-- **`VCALENDAR`-level prefix mapping for `X-WR-*`** — ADR-002.
-- **Parser implementation strategy** (line-based / lexer+parser / streaming) — ADR-003.
-- **Crate split / library layering** — ADR-004. This ADR assumes the typed model lives in the same crate today and can be lifted later without changing its shape.
+- **Property order on output and source-order preservation semantics** — `RawProperty.source_index` is reserved here; its semantics are defined in a future round-trip strategy ADR.
+- **`VCALENDAR`-level prefix mapping for `X-WR-*`** — same future round-trip strategy ADR.
+- **Parser implementation strategy** (line-based / lexer+parser / streaming) — future parser ADR.
+- **Crate split / library layering** — future crate-split ADR. This ADR assumes the typed model lives in the same crate today and can be lifted later without changing its shape.
 - **Timed events** (`DTSTART;VALUE=DATE-TIME`, TZID, UTC, floating). Such `VEVENT`s fall to `VCalendar.unrecognized_components` via rule 9. Typing them is a deliberate later step.
 - **CLI ergonomics for nested-type mutation** (`event.microsoft.get_or_insert_with(...).busystatus = ...`) — implementation detail, addressed in code with helper methods.
 
@@ -146,7 +146,7 @@ pub struct EventExtensions {       // per-vendor
 ### Positive
 
 - The vendor boundary is visible in the type system, satisfying PRD Goal 3.
-- Unknown properties and unrecognized components are preserved, satisfying PRD Goal 2 (the part scoped to typing; ordering belongs to ADR-002).
+- Unknown properties and unrecognized components are preserved, satisfying PRD Goal 2 (the part scoped to typing; ordering belongs to the future round-trip strategy ADR).
 - Each vendor profile can evolve in its own module without rippling through `VEvent` / `VCalendar`.
 - `unknown` is a stable bucket; integrators reading it never see properties migrate out from under them when a vendor profile gains a typed field.
 - The library surface for integrators (PRD §4 secondary persona) maps directly onto the type they care about.
