@@ -27,8 +27,9 @@ In priority order:
 ## 3. Non-Goals
 
 - **Server / service synchronization.** No CalDAV server, no direct integration with Google Calendar API, iCloud Calendar, or Outlook Online. `makeholiday` operates on local `.ics` files.
-- **GUI / WebUI.** No desktop application, no web interface. (A TUI is *not* ruled out — see §8.)
+- **GUI / WebUI.** No desktop application, no web interface. (A TUI is planned as a sibling binary — see [ADR-022](design/022-tui-front-end-policy.md).)
 - **Non-ICS calendar formats.** Microsoft `.msg`, legacy vCalendar 1.0, proprietary binary calendar formats are out of scope.
+- **Vendor profile conversion.** Translating ICS from one vendor's flavor (Outlook / Google / iCloud) to another's is out of scope. Round-trip preserves the source profile unchanged. See [ADR-023](design/023-no-convert-subcommand.md).
 
 ## 4. Target Users
 
@@ -64,15 +65,14 @@ Items are listed in approximate priority. Acceptance criteria to be expanded as 
 
 - **`edit` subcommand** — modify an existing event in place by index. Required to round out CRUD.
 - **`search` / `filter` subcommand** — query events by date range, summary substring, category, or busy status.
-- **`import` / `export` subcommand variants** — bulk ingestion from other ICS files, optionally with vendor-profile normalization.
-- **`convert` subcommand (candidate)** — translate between vendor profiles (e.g., Outlook-flavored ICS → Google-flavored ICS) with explicit loss reporting. Scope to be confirmed.
+- **`import` / `export` subcommand variants** — bulk ingestion from other ICS files. Vendor-profile preservation only; no normalization or conversion (see [ADR-023](design/023-no-convert-subcommand.md)).
 - **Vendor extension support — Outlook profile.** First-class types for `X-MICROSOFT-CDO-*` family, reminders, categories color, etc. Typing model defined in [ADR-001](design/001-vendor-extension-typing.md).
 - **Vendor extension support — Google profile.** First-class types for `X-GOOGLE-*` and Google-specific value handling. Typing model defined in [ADR-001](design/001-vendor-extension-typing.md).
 - **Vendor extension support — iCloud profile.** First-class types for Apple-specific extensions (`X-APPLE-*`, `X-CALENDARSERVER-*`). Typing model defined in [ADR-001](design/001-vendor-extension-typing.md).
 - **RFC ↔ vendor extension boundary documentation.** A reference document, generated where possible from code, listing which properties live in RFC 5545 and which belong to which vendor profile. Boundary rules captured in [ADR-001](design/001-vendor-extension-typing.md).
-- **Reusable ICS handling library (crate split).** Extract `src/ics.rs` (and the typed extension model) into a separately publishable crate. The CLI becomes a thin layer on top. The type shape is fixed by [ADR-001](design/001-vendor-extension-typing.md); the split timing is the subject of a future crate-split ADR.
-- **Task management properties (`VTODO`, candidate).** Because `makeholiday` is positioned as a general ICS CLI, `VTODO` support is on the table; scope is not yet committed.
-- **TUI front-end (candidate).** An interactive terminal UI may be added if CLI UX hits its ceiling. Not in scope today but not ruled out.
+- **Reusable ICS handling library (`ics-core` crate).** The shared core lives in `crates/ics-core/` as an in-tree workspace member; external publication timing is settled by [ADR-017](design/017-workspace-and-ics-core-crate.md). Type shape per [ADR-001](design/001-vendor-extension-typing.md).
+- **Task management properties (`VTODO`).** Typed `VTodo` in `ics-core`; the makeholiday CLI exposes read-only display via `list --include-todos` (no editing subcommands). See [ADR-021](design/021-vtodo-scope.md).
+- **TUI front-end.** Planned as a separate workspace member (`crates/makeholiday-tui/`) consuming `ics-core`. No launch date; trigger is maintainer judgment. See [ADR-022](design/022-tui-front-end-policy.md).
 
 ## 6. Non-Functional Requirements
 
@@ -94,8 +94,5 @@ Distinct from Non-Goals: these are explicitly *not* committed for any planned re
 
 ## 8. Open Questions
 
-- **TUI front-end** — when does it become worth building, and what subset of commands does it cover first?
-- **`VTODO` scope** — full read/write parity with `VEVENT`, or read-only preservation for round-trip?
-- **`convert` subcommand** — is vendor profile conversion a goal, or is "preserve as input vendor profile" sufficient?
-- **Crate split timing** — extract the library before or after the typed vendor-extension model lands?
+- **TUI front-end launch trigger** — scope and architecture are settled in [ADR-022](design/022-tui-front-end-policy.md); the remaining open question is *when* maintainer judgment says to start.
 - **License of preset icon names / descriptions** — the `PRESET_ICONS` table ships under the project license; revisit if we add SVG / image assets later.
