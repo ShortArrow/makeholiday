@@ -1,0 +1,24 @@
+# SHA-pinned per ADR-014.
+# To verify a pin: gh api repos/<owner>/<repo>/git/ref/tags/<version> --jq .object.sha
+# Tag comments are advisory only; the SHA is the source of truth.
+
+name: Audit
+
+on:
+  schedule:
+    # Monday 08:00 UTC — picks up newly disclosed RUSTSEC advisories without waiting for a PR.
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  advisories:
+    name: cargo deny check advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2.0.20
+        with:
+          command: check advisories

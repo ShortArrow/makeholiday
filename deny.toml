@@ -1,0 +1,44 @@
+# cargo-deny configuration. See ADR-013 (dependency policy) and ADR-014 (CI).
+# License set matches the dual MIT OR Apache-2.0 distribution of makeholiday.
+
+[graph]
+all-features = false
+no-default-features = false
+
+[advisories]
+version = 2
+# Deny known-vulnerable, unsound, or unmaintained crates.
+ignore = []
+
+[licenses]
+version = 2
+# Licenses compatible with the MIT OR Apache-2.0 dual-license of this project (ADR-003).
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2024",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+    "MPL-2.0",
+]
+confidence-threshold = 0.9
+exceptions = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# When a crate must be banned for non-license reasons, list it here.
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
