@@ -8,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-ics-core = { path = "../ics-core" }
+ics-core = { path = "../ics-core", version = "0.0.0" }
 clap.workspace = true
 chrono.workspace = true
 uuid.workspace = true
