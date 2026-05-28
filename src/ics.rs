@@ -136,7 +136,10 @@ pub fn format_vevent(event: &VEvent) -> String {
         format!("DTEND;VALUE=DATE:{}", event.dtend.format("%Y%m%d")),
         format!("SUMMARY:{}", event.summary),
         format!("TRANSP:{}", event.busystatus.transp()),
-        format!("X-MICROSOFT-CDO-BUSYSTATUS:{}", event.busystatus.cdo_value()),
+        format!(
+            "X-MICROSOFT-CDO-BUSYSTATUS:{}",
+            event.busystatus.cdo_value()
+        ),
     ];
     if let Some(class) = event.class {
         lines.push(format!("CLASS:{}", class.ics_value()));
@@ -263,7 +266,6 @@ pub fn remove_event_by_summary(content: &str, summary: &str) -> Result<String, S
     ))
 }
 
-
 /// Parse index specifier: "3", "1,4,6", "3-7", "1,3-5,8"
 /// Returns sorted, deduplicated 1-based indices.
 pub fn parse_indices(input: &str, max: usize) -> Result<Vec<usize>, String> {
@@ -305,10 +307,7 @@ pub fn remove_events_by_indices(content: &str, indices: &[usize]) -> Result<Stri
     let events = parse_events(content)?;
     for &idx in indices {
         if idx == 0 || idx > events.len() {
-            return Err(format!(
-                "Index {idx} out of range (1-{})",
-                events.len()
-            ));
+            return Err(format!("Index {idx} out of range (1-{})", events.len()));
         }
     }
     let remaining: Vec<_> = events
@@ -372,7 +371,12 @@ mod tests {
             .unwrap()
     }
 
-    fn make_event(uid: &str, start: (i32, u32, u32), end: (i32, u32, u32), summary: &str) -> VEvent {
+    fn make_event(
+        uid: &str,
+        start: (i32, u32, u32),
+        end: (i32, u32, u32),
+        summary: &str,
+    ) -> VEvent {
         VEvent {
             uid: uid.to_string(),
             dtstamp: test_dtstamp(),
@@ -501,7 +505,7 @@ mod tests {
     #[test]
     fn parse_events_roundtrip() {
         let event = make_event("rt-1", (2026, 5, 3), (2026, 5, 4), "憲法記念日");
-        let cal = format_calendar(&[event.clone()]);
+        let cal = format_calendar(std::slice::from_ref(&event));
         let parsed = parse_events(&cal).unwrap();
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0], event);

@@ -49,8 +49,7 @@ fn resolve_add_params(
         Some(e) => Some(e),
         None if !interactive => None,
         None => {
-            write!(writer, "End date (empty for single day): ")
-                .map_err(|e| e.to_string())?;
+            write!(writer, "End date (empty for single day): ").map_err(|e| e.to_string())?;
             writer.flush().map_err(|e| e.to_string())?;
             let mut line = String::new();
             reader.read_line(&mut line).map_err(|e| e.to_string())?;
@@ -65,6 +64,7 @@ fn resolve_add_params(
     Ok((summary, start, end))
 }
 
+#[allow(clippy::too_many_arguments)] // ADR-009/010 restructure will replace this with a request struct
 pub fn add(
     file: &Path,
     summary: Option<&str>,
@@ -87,8 +87,8 @@ pub fn add(
         None => start + chrono::Days::new(1),
     };
 
-    let content =
-        std::fs::read_to_string(file).map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
+    let content = std::fs::read_to_string(file)
+        .map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
 
     let event = VEvent {
         uid: uuid::Uuid::new_v4().to_string(),
@@ -116,8 +116,8 @@ pub fn list(
     descending: bool,
     json: bool,
 ) -> Result<String, String> {
-    let content =
-        std::fs::read_to_string(file).map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
+    let content = std::fs::read_to_string(file)
+        .map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
     let events = ics::parse_events(&content)?;
     let events = if sort_keys.is_empty() {
         events
@@ -137,13 +137,9 @@ pub fn list(
     }
 }
 
-pub fn remove(
-    file: &Path,
-    summary: Option<&str>,
-    target: Option<&str>,
-) -> Result<(), String> {
-    let content =
-        std::fs::read_to_string(file).map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
+pub fn remove(file: &Path, summary: Option<&str>, target: Option<&str>) -> Result<(), String> {
+    let content = std::fs::read_to_string(file)
+        .map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
     let events = ics::parse_events(&content)?;
 
     let (new_content, removed_desc) = match (summary, target) {
@@ -233,7 +229,17 @@ mod tests {
     }
 
     fn add_free(path: &std::path::Path, summary: &str, start: NaiveDate, end: Option<NaiveDate>) {
-        add(path, Some(summary), Some(start), end, ics::BusyStatus::Free, None, vec![], None).unwrap();
+        add(
+            path,
+            Some(summary),
+            Some(start),
+            end,
+            ics::BusyStatus::Free,
+            None,
+            vec![],
+            None,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -241,7 +247,12 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = temp_file(&dir, "test.ics");
         init(&path).unwrap();
-        add_free(&path, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), None);
+        add_free(
+            &path,
+            "元日",
+            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            None,
+        );
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("SUMMARY:元日"));
         assert!(content.contains("BEGIN:VEVENT"));
@@ -253,8 +264,18 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = temp_file(&dir, "test.ics");
         init(&path).unwrap();
-        add_free(&path, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), None);
-        add_free(&path, "建国記念の日", NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(), None);
+        add_free(
+            &path,
+            "元日",
+            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            None,
+        );
+        add_free(
+            &path,
+            "建国記念の日",
+            NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(),
+            None,
+        );
         let content = std::fs::read_to_string(&path).unwrap();
         let events = ics::parse_events(&content).unwrap();
         assert_eq!(events.len(), 2);
@@ -266,7 +287,12 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = temp_file(&dir, "test.ics");
         init(&path).unwrap();
-        add_free(&path, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), None);
+        add_free(
+            &path,
+            "元日",
+            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            None,
+        );
         add_free(
             &path,
             "年末年始",
@@ -301,8 +327,18 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = temp_file(&dir, "test.ics");
         init(&path).unwrap();
-        add_free(&path, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), None);
-        add_free(&path, "建国記念の日", NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(), None);
+        add_free(
+            &path,
+            "元日",
+            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            None,
+        );
+        add_free(
+            &path,
+            "建国記念の日",
+            NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(),
+            None,
+        );
         remove(&path, Some("元日"), None).unwrap();
         let output = list(&path, &[], false, false).unwrap();
         assert!(!output.contains("元日"));
@@ -314,8 +350,18 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = temp_file(&dir, "test.ics");
         init(&path).unwrap();
-        add_free(&path, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(), None);
-        add_free(&path, "建国記念の日", NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(), None);
+        add_free(
+            &path,
+            "元日",
+            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            None,
+        );
+        add_free(
+            &path,
+            "建国記念の日",
+            NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(),
+            None,
+        );
         remove(&path, None, Some("1")).unwrap();
         let output = list(&path, &[], false, false).unwrap();
         assert!(!output.contains("元日"));

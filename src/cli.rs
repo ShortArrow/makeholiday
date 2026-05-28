@@ -78,7 +78,9 @@ pub fn parse_date(s: &str) -> Result<NaiveDate, String> {
             }
         }
     }
-    Err(format!("invalid date '{s}' (expected YYYY-MM-DD or YYYY/M/D)"))
+    Err(format!(
+        "invalid date '{s}' (expected YYYY-MM-DD or YYYY/M/D)"
+    ))
 }
 
 #[derive(Parser)]

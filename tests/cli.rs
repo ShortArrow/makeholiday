@@ -13,21 +13,34 @@ fn init_add_list_workflow() {
     let file_str = file.to_str().unwrap();
 
     // init
-    cmd()
-        .args(["-f", file_str, "init"])
-        .assert()
-        .success();
+    cmd().args(["-f", file_str, "init"]).assert().success();
 
     // add single day
     cmd()
-        .args(["-f", file_str, "add", "--summary", "元日", "--start", "2026-01-01"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "元日",
+            "--start",
+            "2026-01-01",
+        ])
         .assert()
         .success();
 
     // add multi day
     cmd()
         .args([
-            "-f", file_str, "add", "--summary", "年末年始", "--start", "2026-12-29", "--end", "2027-01-03",
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "年末年始",
+            "--start",
+            "2026-12-29",
+            "--end",
+            "2027-01-03",
         ])
         .assert()
         .success();
@@ -38,7 +51,9 @@ fn init_add_list_workflow() {
         .assert()
         .success()
         .stdout(predicate::str::contains("2026-01-01 : 元日"))
-        .stdout(predicate::str::contains("2026-12-29 to 2027-01-03 : 年末年始"));
+        .stdout(predicate::str::contains(
+            "2026-12-29 to 2027-01-03 : 年末年始",
+        ));
 }
 
 #[test]
@@ -90,7 +105,15 @@ fn add_end_before_start_fails() {
     cmd().args(["-f", file_str, "init"]).assert().success();
     cmd()
         .args([
-            "-f", file_str, "add", "--summary", "invalid", "--start", "2026-03-01", "--end", "2026-02-01",
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "invalid",
+            "--start",
+            "2026-03-01",
+            "--end",
+            "2026-02-01",
         ])
         .assert()
         .failure();
@@ -104,7 +127,17 @@ fn add_with_slash_date_format() {
 
     cmd().args(["-f", file_str, "init"]).assert().success();
     cmd()
-        .args(["-f", file_str, "add", "--summary", "夏季休業", "--start", "2026/4/8", "--end", "2026/5/3"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "夏季休業",
+            "--start",
+            "2026/4/8",
+            "--end",
+            "2026/5/3",
+        ])
         .assert()
         .success();
 
@@ -112,7 +145,9 @@ fn add_with_slash_date_format() {
         .args(["-f", file_str, "list"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("2026-04-08 to 2026-05-03 : 夏季休業"));
+        .stdout(predicate::str::contains(
+            "2026-04-08 to 2026-05-03 : 夏季休業",
+        ));
 }
 
 #[test]
@@ -123,11 +158,27 @@ fn remove_by_summary_cli() {
 
     cmd().args(["-f", file_str, "init"]).assert().success();
     cmd()
-        .args(["-f", file_str, "add", "--summary", "元日", "--start", "2026-01-01"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "元日",
+            "--start",
+            "2026-01-01",
+        ])
         .assert()
         .success();
     cmd()
-        .args(["-f", file_str, "add", "--summary", "建国記念の日", "--start", "2026-02-11"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "建国記念の日",
+            "--start",
+            "2026-02-11",
+        ])
         .assert()
         .success();
 
@@ -152,11 +203,27 @@ fn remove_by_index_cli() {
 
     cmd().args(["-f", file_str, "init"]).assert().success();
     cmd()
-        .args(["-f", file_str, "add", "--summary", "元日", "--start", "2026-01-01"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "元日",
+            "--start",
+            "2026-01-01",
+        ])
         .assert()
         .success();
     cmd()
-        .args(["-f", file_str, "add", "--summary", "建国記念の日", "--start", "2026-02-11"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "建国記念の日",
+            "--start",
+            "2026-02-11",
+        ])
         .assert()
         .success();
 
@@ -181,7 +248,15 @@ fn remove_interactive_cli() {
 
     cmd().args(["-f", file_str, "init"]).assert().success();
     cmd()
-        .args(["-f", file_str, "add", "--summary", "元日", "--start", "2026-01-01"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "元日",
+            "--start",
+            "2026-01-01",
+        ])
         .assert()
         .success();
 
@@ -228,7 +303,15 @@ fn add_with_summary_and_start_does_not_prompt() {
     cmd().args(["-f", file_str, "init"]).assert().success();
 
     cmd()
-        .args(["-f", file_str, "add", "--summary", "元日", "--start", "2026-01-01"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "元日",
+            "--start",
+            "2026-01-01",
+        ])
         .assert()
         .success()
         .stderr(predicate::str::contains("End date").not());
@@ -248,15 +331,39 @@ fn list_sort_by_start_desc() {
 
     cmd().args(["-f", file_str, "init"]).assert().success();
     cmd()
-        .args(["-f", file_str, "add", "--summary", "元日", "--start", "2026-01-01"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "元日",
+            "--start",
+            "2026-01-01",
+        ])
         .assert()
         .success();
     cmd()
-        .args(["-f", file_str, "add", "--summary", "憲法記念日", "--start", "2026-05-03"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "憲法記念日",
+            "--start",
+            "2026-05-03",
+        ])
         .assert()
         .success();
     cmd()
-        .args(["-f", file_str, "add", "--summary", "建国記念の日", "--start", "2026-02-11"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "建国記念の日",
+            "--start",
+            "2026-02-11",
+        ])
         .assert()
         .success();
 
@@ -290,20 +397,46 @@ fn list_sort_multi_key() {
 
     cmd().args(["-f", file_str, "init"]).assert().success();
     cmd()
-        .args(["-f", file_str, "add", "--summary", "B休日", "--start", "2026-01-01"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "B休日",
+            "--start",
+            "2026-01-01",
+        ])
         .assert()
         .success();
     cmd()
-        .args(["-f", file_str, "add", "--summary", "A休日", "--start", "2026-01-01"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "A休日",
+            "--start",
+            "2026-01-01",
+        ])
         .assert()
         .success();
     cmd()
-        .args(["-f", file_str, "add", "--summary", "C休日", "--start", "2026-02-01"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "C休日",
+            "--start",
+            "2026-02-01",
+        ])
         .assert()
         .success();
 
     cmd()
-        .args(["-f", file_str, "list", "--sort", "start", "--sort", "summary"])
+        .args([
+            "-f", file_str, "list", "--sort", "start", "--sort", "summary",
+        ])
         .assert()
         .success()
         .stdout(predicate::str::starts_with("1: 2026-01-01 : A休日"));
@@ -316,13 +449,18 @@ fn file_option_after_subcommand_also_works() {
     let file_str = file.to_str().unwrap();
 
     // --file after subcommand (clap global option supports this)
-    cmd()
-        .args(["init", "-f", file_str])
-        .assert()
-        .success();
+    cmd().args(["init", "-f", file_str]).assert().success();
 
     cmd()
-        .args(["add", "-f", file_str, "--summary", "元日", "--start", "2026-01-01"])
+        .args([
+            "add",
+            "-f",
+            file_str,
+            "--summary",
+            "元日",
+            "--start",
+            "2026-01-01",
+        ])
         .assert()
         .success();
 
@@ -341,7 +479,15 @@ fn list_json_output() {
 
     cmd().args(["-f", file_str, "init"]).assert().success();
     cmd()
-        .args(["-f", file_str, "add", "--summary", "元日", "--start", "2026-01-01"])
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "元日",
+            "--start",
+            "2026-01-01",
+        ])
         .assert()
         .success();
 
