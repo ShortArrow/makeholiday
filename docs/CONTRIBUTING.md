@@ -68,6 +68,31 @@ Keep the subject line under ~72 characters. Use the body for the *why*.
 - Architectural decisions are recorded as ADRs under `docs/design/`, following [`000-ADR-policy.md`](design/000-ADR-policy.md).
 - Respect existing documentation; do not silently rewrite history of decisions.
 
+## Dependency Policy
+
+Per [ADR-013](design/013-dependency-policy.md), every new runtime or build dependency must clear a brief checklist before landing:
+
+- **License compatibility** — must be MIT / Apache-2.0 / BSD / MPL-2.0 (or a superset). Copyleft (GPL, AGPL) is not acceptable.
+- **MSRV** — must build on the current [rust-version](../Cargo.toml).
+- **Maintenance signal** — recent commits, open-issue triage, non-trivial reverse dependency count.
+- **Alternatives considered** — note why this crate over the obvious neighbors.
+- **Surface justification** — small, focused crates preferred over multi-purpose frameworks.
+
+Pre-approved (no checklist required): `clap`, `chrono`, `uuid`, `serde`, `serde_json`, `tempfile`, `thiserror`, `assert_cmd`, `predicates`.
+
+Add the rationale in the PR description (a few lines is fine); reviewers check the box.
+
+## CLI Flag Naming
+
+Per [ADR-020](design/020-cli-subcommand-policy.md), flags follow the **common-meaning, common-name** rule:
+
+- A flag with the same meaning across subcommands MUST share name and short form (e.g., `--summary` is always the event title, `--file` / `-f` is always the calendar file).
+- Conversely, the same name MUST NOT be reused for a different concept.
+- Subcommands prefer verb names (`add`, `edit`, `search`); the noun exception (`icons`) is for built-in-data listings only.
+- New subcommands must ship `--help` with at least one usage example via clap's `long_about` or doc comments.
+
+Refer to the flag table in [ADR-020](design/020-cli-subcommand-policy.md#global-vs-subcommand-local-flags) before adding any new flag.
+
 ## Testing
 
 - `cargo test` must pass before submitting a PR.

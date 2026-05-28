@@ -68,6 +68,31 @@ docs/
 - アーキテクチャ判断は `docs/design/` 配下に ADR として記録します。形式は [`000-ADR-policy.md`](design/000-ADR-policy.md) に従います。
 - 既存ドキュメントを尊重し、決定の履歴を黙って書き換えないこと。
 
+## 依存ポリシー
+
+[ADR-013](design/013-dependency-policy.md) により、新規の runtime / build 依存追加には以下の簡易チェックリストを通すこと:
+
+- **ライセンス互換性** — MIT / Apache-2.0 / BSD / MPL-2.0（あるいはこれを包含するもの）に限る。Copyleft（GPL, AGPL）は不可。
+- **MSRV** — 現在の [rust-version](../Cargo.toml) でビルドできること。
+- **メンテナンスシグナル** — 直近のコミット、open issue のトリアージ状況、被依存数。
+- **代替検討** — 同種クレートとの比較理由を簡潔に。
+- **表面の正当化** — 多目的フレームワークより、小さく目的が絞れたクレートを優先。
+
+事前承認済み（チェックリスト不要）: `clap`, `chrono`, `uuid`, `serde`, `serde_json`, `tempfile`, `thiserror`, `assert_cmd`, `predicates`。
+
+判断理由は PR description に数行で記載。レビューアが確認します。
+
+## CLI フラグ命名
+
+[ADR-020](design/020-cli-subcommand-policy.md) により、フラグは **共通意味は共通名** ルールに従う:
+
+- 複数サブコマンドで同じ意味を持つフラグは、ロング名・ショート形を **必ず同一** にすること（例: `--summary` は常にイベントタイトル、`--file` / `-f` は常にカレンダーファイル）。
+- 逆に、同じ名前を別の概念に再利用するのは禁止。
+- 新規サブコマンドは動詞名を優先（`add`, `edit`, `search`）。名詞例外（`icons`）は組み込みデータ列挙用途のみ。
+- 新規サブコマンドは clap の `long_about` か doc コメントで `--help` に使用例を 1 つ以上含めること。
+
+新規フラグを追加する前に [ADR-020 のフラグ表](design/020-cli-subcommand-policy.md#global-vs-subcommand-local-flags) を必ず参照すること。
+
 ## テスト
 
 - PR 提出前に `cargo test` を成功させること。
