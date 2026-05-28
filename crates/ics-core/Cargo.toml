@@ -1,0 +1,12 @@
+[package]
+name = "ics-core"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Typed iCalendar (RFC 5545) model with vendor-extension support — shared core for makeholiday and future consumers."
+publish = false
+
+[dependencies]

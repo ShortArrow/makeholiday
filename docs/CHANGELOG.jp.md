@@ -9,7 +9,8 @@
 ## [Unreleased]
 
 ### 変更
-- [ADR-017](design/017-workspace-and-ics-core-crate.md) に従い、リポジトリを Cargo workspace へ再編。`Cargo.toml` は workspace マニフェストに、`makeholiday` バイナリクレートは `crates/makeholiday/` 配下へ移動。挙動変更なし。`ics-core` クレートは後続ステップで追加。
+- [ADR-017](design/017-workspace-and-ics-core-crate.md) に従い、リポジトリを Cargo workspace へ再編。`Cargo.toml` は workspace マニフェストに、`makeholiday` バイナリクレートは `crates/makeholiday/` 配下へ移動。挙動変更なし。
+- 空の `crates/ics-core/` ワークスペースメンバを追加（ADR-017 Migration Step 2）。`makeholiday` から path 依存で接続。公開 API はまだ無し。型とパーサは Step 3 で移動。
 
 ### 追加
 - ドキュメント基盤一式: `README`, `PRD`, `CONTRIBUTING`, `SETUP`, `USAGE`（英語版と日本語版）。

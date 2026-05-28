@@ -9,7 +9,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ## [Unreleased]
 
 ### Changed
-- Repository restructured into a Cargo workspace per [ADR-017](docs/design/017-workspace-and-ics-core-crate.md). `Cargo.toml` is now the workspace manifest; the `makeholiday` binary crate lives under `crates/makeholiday/`. No behavior change. The `ics-core` crate is added in a follow-up step.
+- Repository restructured into a Cargo workspace per [ADR-017](docs/design/017-workspace-and-ics-core-crate.md). `Cargo.toml` is now the workspace manifest; the `makeholiday` binary crate lives under `crates/makeholiday/`. No behavior change.
+- Added empty `crates/ics-core/` workspace member (Step 2 of ADR-017 Migration). Wired as a path dependency from `makeholiday`. No public surface yet; types and parser move in Step 3.
 
 ### Added
 - Initial documentation scaffold: `README`, `PRD`, `CONTRIBUTING`, `SETUP`, `USAGE` (English + Japanese mirrors).
