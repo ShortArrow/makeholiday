@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+- Repository restructured into a Cargo workspace per [ADR-017](docs/design/017-workspace-and-ics-core-crate.md). `Cargo.toml` is now the workspace manifest; the `makeholiday` binary crate lives under `crates/makeholiday/`. No behavior change. The `ics-core` crate is added in a follow-up step.
+
 ### Added
 - Initial documentation scaffold: `README`, `PRD`, `CONTRIBUTING`, `SETUP`, `USAGE` (English + Japanese mirrors).
 - ADRs 000–023 covering ADR policy, vendor extension typing model, language/edition, dual licensing, trunk-based development + SemVer, Conventional Commits, testing strategy, documentation language policy, MSRV, module layering, lib/main separation, I/O boundary + repository pattern, error handling, dependency policy, CI/CD platform, diagnostic output, configuration policy, workspace + `ics-core` crate, round-trip strategy, parser implementation, CLI subcommand policy, VTODO scope, TUI front-end policy, and the explicit rejection of a `convert` subcommand.

@@ -19,19 +19,28 @@ No platform-specific setup is required; the project builds on Windows, macOS, an
 
 ## Project Layout
 
+Cargo workspace per [ADR-017](design/017-workspace-and-ics-core-crate.md):
+
 ```
-src/
-  main.rs       # Entry point, dispatches subcommands
-  cli.rs        # Clap definitions, date parsing
-  commands.rs   # init / add / list / remove implementations
-  ics.rs        # ICS parsing, formatting, sorting
-tests/
-  cli.rs        # Integration tests via assert_cmd
+Cargo.toml                        # workspace manifest ([workspace], shared deps)
+crates/
+  makeholiday/                    # CLI binary crate
+    Cargo.toml
+    src/
+      main.rs                     # Entry point, dispatches subcommands
+      cli.rs                      # Clap definitions, date parsing
+      commands.rs                 # init / add / list / remove implementations
+      ics.rs                      # (temporary) ICS parsing, formatting, sorting —
+                                  #  moves to crates/ics-core/ in a later migration step
+    tests/
+      cli.rs                      # Integration tests via assert_cmd
 docs/
   README.jp.md
   PRD.md, PRD.jp.md
   CONTRIBUTING.md, CONTRIBUTING.jp.md
-  design/       # Architectural Decision Records (ADRs)
+  design/                         # Architectural Decision Records (ADRs)
+.github/workflows/                # CI / Release / Audit (see ADR-014)
+deny.toml                         # cargo-deny config
 ```
 
 ## Workflow

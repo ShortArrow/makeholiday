@@ -81,7 +81,7 @@ jobs:
             echo "linker = \"${{ matrix.linker }}\""
           } >> .cargo/config.toml
       - name: Build release
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: cargo build --release --locked -p makeholiday --target ${{ matrix.target }}
       - name: Package (tar.gz)
         if: matrix.archive == 'tar.gz'
         shell: bash
