@@ -261,7 +261,7 @@ fn remove_interactive_cli() {
         .success();
 
     cmd()
-        .args(["-f", file_str, "remove"])
+        .args(["-f", file_str, "--interactive", "remove"])
         .write_stdin("1\n")
         .assert()
         .success();
@@ -282,7 +282,7 @@ fn add_interactive_cli() {
     cmd().args(["-f", file_str, "init"]).assert().success();
 
     cmd()
-        .args(["-f", file_str, "add"])
+        .args(["-f", file_str, "--interactive", "add"])
         .write_stdin("元日\n2026/1/1\n\n")
         .assert()
         .success();
@@ -504,4 +504,76 @@ fn list_json_output() {
     assert_eq!(arr[0]["summary"], "元日");
     assert_eq!(arr[0]["dtstart"], "2026-01-01");
     assert_eq!(arr[0]["dtend"], "2026-01-02");
+}
+
+#[test]
+fn quiet_flag_suppresses_status_messages() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("test.ics");
+    let file_str = file.to_str().unwrap();
+
+    cmd().args(["-f", file_str, "init"]).assert().success();
+
+    // Without --quiet, add emits 'Added: ...' on stderr.
+    cmd()
+        .args([
+            "-f",
+            file_str,
+            "add",
+            "--summary",
+            "noisy",
+            "--start",
+            "2026-01-01",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Added: 2026-01-01"));
+
+    // With --quiet (or -q), stderr stays empty for the status line.
+    cmd()
+        .args([
+            "-f",
+            file_str,
+            "--quiet",
+            "add",
+            "--summary",
+            "silent",
+            "--start",
+            "2026-01-02",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Added: 2026-01-02").not());
+
+    cmd()
+        .args([
+            "-f",
+            file_str,
+            "-q",
+            "add",
+            "--summary",
+            "also-silent",
+            "--start",
+            "2026-01-03",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Added:").not());
+}
+
+#[test]
+fn no_interactive_in_non_tty_errors_when_args_missing() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("test.ics");
+    let file_str = file.to_str().unwrap();
+
+    cmd().args(["-f", file_str, "init"]).assert().success();
+
+    // assert_cmd does not allocate a TTY for child processes; without
+    // --interactive, the add subcommand sees no TTY and refuses to prompt.
+    cmd()
+        .args(["-f", file_str, "add"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no TTY"));
 }

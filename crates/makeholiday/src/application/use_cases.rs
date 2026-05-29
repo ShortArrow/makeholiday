@@ -11,6 +11,34 @@ use crate::display::format_event_line;
 use crate::error::{MhError, Result};
 use crate::icons;
 
+/// Runtime context for status output and interactive-prompt policy.
+/// Per ADR-015.
+#[derive(Debug, Clone, Copy)]
+pub struct RunContext {
+    /// Suppress status / warning output.
+    pub quiet: bool,
+    /// Whether interactive prompts are allowed. Resolved at the
+    /// composition root from the explicit override flags + TTY detection.
+    pub allow_prompts: bool,
+}
+
+impl RunContext {
+    pub fn status(&self, msg: &str) {
+        if !self.quiet {
+            eprintln!("{msg}");
+        }
+    }
+}
+
+impl Default for RunContext {
+    fn default() -> Self {
+        Self {
+            quiet: false,
+            allow_prompts: true,
+        }
+    }
+}
+
 pub fn init<R: CalendarRepository>(repo: &R) -> Result<()> {
     repo.create()
 }
@@ -19,10 +47,17 @@ fn resolve_add_params(
     summary: Option<&str>,
     start: Option<NaiveDate>,
     end: Option<NaiveDate>,
+    allow_prompts: bool,
     reader: &mut dyn BufRead,
     writer: &mut dyn Write,
 ) -> Result<(String, NaiveDate, Option<NaiveDate>)> {
     let interactive = summary.is_none() || start.is_none();
+    if interactive && !allow_prompts {
+        return Err(MhError::InvalidInput(
+            "missing required arguments: pass --summary and --start (no TTY for interactive prompts)"
+                .to_string(),
+        ));
+    }
     let summary = match summary {
         Some(s) => s.to_string(),
         None => {
@@ -76,6 +111,7 @@ fn resolve_add_params(
 #[allow(clippy::too_many_arguments)] // ADR-001 Migration will replace flat args with a request struct
 pub fn add<R: CalendarRepository>(
     repo: &R,
+    ctx: RunContext,
     summary: Option<&str>,
     start: Option<NaiveDate>,
     end: Option<NaiveDate>,
@@ -87,7 +123,14 @@ pub fn add<R: CalendarRepository>(
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     let mut writer = io::stderr();
-    let (summary, start, end) = resolve_add_params(summary, start, end, &mut reader, &mut writer)?;
+    let (summary, start, end) = resolve_add_params(
+        summary,
+        start,
+        end,
+        ctx.allow_prompts,
+        &mut reader,
+        &mut writer,
+    )?;
 
     let dtend = match end {
         Some(e) if e < start => {
@@ -128,7 +171,7 @@ pub fn add<R: CalendarRepository>(
     repo.save(&cal)?;
 
     let line = format_event_line(&event);
-    eprintln!("Added: {line}");
+    ctx.status(&format!("Added: {line}"));
     Ok(())
 }
 
@@ -150,7 +193,12 @@ pub struct EditPatch {
     pub clear_icon: bool,
 }
 
-pub fn edit<R: CalendarRepository>(repo: &R, index: usize, patch: EditPatch) -> Result<()> {
+pub fn edit<R: CalendarRepository>(
+    repo: &R,
+    ctx: RunContext,
+    index: usize,
+    patch: EditPatch,
+) -> Result<()> {
     let mut cal = repo.load()?;
     if index == 0 || index > cal.events.len() {
         return Err(MhError::NotFound(format!(
@@ -216,7 +264,7 @@ pub fn edit<R: CalendarRepository>(repo: &R, index: usize, patch: EditPatch) -> 
 
     let line = format_event_line(event);
     repo.save(&cal)?;
-    eprintln!("Edited: {line}");
+    ctx.status(&format!("Edited: {line}"));
     Ok(())
 }
 
@@ -248,6 +296,7 @@ pub fn list<R: CalendarRepository>(
 
 pub fn remove<R: CalendarRepository>(
     repo: &R,
+    ctx: RunContext,
     summary: Option<&str>,
     target: Option<&str>,
 ) -> Result<()> {
@@ -284,6 +333,12 @@ pub fn remove<R: CalendarRepository>(
             (ics::remove_events_by_indices(&cal, &indices)?, desc)
         }
         (None, None) => {
+            if !ctx.allow_prompts {
+                return Err(MhError::InvalidInput(
+                    "missing required arguments: pass <INDEX> or --summary (no TTY for interactive prompts)"
+                        .to_string(),
+                ));
+            }
             if events.is_empty() {
                 return Err(MhError::NotFound("No events to remove".to_string()));
             }
@@ -311,7 +366,7 @@ pub fn remove<R: CalendarRepository>(
     };
 
     repo.save(&new_cal)?;
-    eprintln!("Removed: {removed_desc}");
+    ctx.status(&format!("Removed: {removed_desc}"));
     Ok(())
 }
 
@@ -348,6 +403,7 @@ mod tests {
     fn add_free(repo: &FileCalendarRepository, summary: &str, start: NaiveDate) {
         add(
             repo,
+            RunContext::default(),
             Some(summary),
             Some(start),
             None,
@@ -367,6 +423,7 @@ mod tests {
     ) {
         add(
             repo,
+            RunContext::default(),
             Some(summary),
             Some(start),
             Some(end),
@@ -430,6 +487,7 @@ mod tests {
         init(&repo).unwrap();
         let result = add(
             &repo,
+            RunContext::default(),
             Some("invalid"),
             Some(NaiveDate::from_ymd_opt(2026, 3, 1).unwrap()),
             Some(NaiveDate::from_ymd_opt(2026, 2, 1).unwrap()),
@@ -452,7 +510,7 @@ mod tests {
             "建国記念の日",
             NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(),
         );
-        remove(&repo, Some("元日"), None).unwrap();
+        remove(&repo, RunContext::default(), Some("元日"), None).unwrap();
         let output = list(&repo, &[], false, false).unwrap();
         assert!(!output.contains("元日"));
         assert!(output.contains("建国記念の日"));
@@ -469,7 +527,7 @@ mod tests {
             "建国記念の日",
             NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(),
         );
-        remove(&repo, None, Some("1")).unwrap();
+        remove(&repo, RunContext::default(), None, Some("1")).unwrap();
         let output = list(&repo, &[], false, false).unwrap();
         assert!(!output.contains("元日"));
         assert!(output.contains("建国記念の日"));
@@ -482,6 +540,7 @@ mod tests {
         init(&repo).unwrap();
         add(
             &repo,
+            RunContext::default(),
             Some("不在"),
             Some(NaiveDate::from_ymd_opt(2026, 8, 1).unwrap()),
             None,
@@ -513,7 +572,7 @@ mod tests {
             summary: Some("New Year".to_string()),
             ..EditPatch::default()
         };
-        edit(&repo, 1, patch).unwrap();
+        edit(&repo, RunContext::default(), 1, patch).unwrap();
 
         let cal = repo.load().unwrap();
         assert_eq!(cal.events[0].summary, "New Year");
@@ -530,7 +589,7 @@ mod tests {
             start: Some(NaiveDate::from_ymd_opt(2027, 1, 1).unwrap()),
             ..EditPatch::default()
         };
-        edit(&repo, 1, patch).unwrap();
+        edit(&repo, RunContext::default(), 1, patch).unwrap();
 
         let cal = repo.load().unwrap();
         assert_eq!(
@@ -554,7 +613,7 @@ mod tests {
             busystatus: Some(ics::microsoft::MsBusyStatus::Oof),
             ..EditPatch::default()
         };
-        edit(&repo, 1, patch).unwrap();
+        edit(&repo, RunContext::default(), 1, patch).unwrap();
 
         let cal = repo.load().unwrap();
         assert_eq!(
@@ -571,6 +630,7 @@ mod tests {
         // Add an event with an icon via the add() use case.
         add(
             &repo,
+            RunContext::default(),
             Some("Travel"),
             Some(NaiveDate::from_ymd_opt(2026, 8, 1).unwrap()),
             None,
@@ -589,7 +649,7 @@ mod tests {
             clear_icon: true,
             ..EditPatch::default()
         };
-        edit(&repo, 1, patch).unwrap();
+        edit(&repo, RunContext::default(), 1, patch).unwrap();
 
         let cal = repo.load().unwrap();
         assert_eq!(icons::read_icon(&cal.events[0]), None);
@@ -602,6 +662,7 @@ mod tests {
         init(&repo).unwrap();
         add(
             &repo,
+            RunContext::default(),
             Some("Mtg"),
             Some(NaiveDate::from_ymd_opt(2026, 8, 1).unwrap()),
             None,
@@ -617,7 +678,7 @@ mod tests {
             clear_categories: true,
             ..EditPatch::default()
         };
-        edit(&repo, 1, patch).unwrap();
+        edit(&repo, RunContext::default(), 1, patch).unwrap();
 
         let cal = repo.load().unwrap();
         assert_eq!(cal.events[0].categories, vec!["work", "important"]);
@@ -634,7 +695,7 @@ mod tests {
             summary: Some("ignored".to_string()),
             ..EditPatch::default()
         };
-        let result = edit(&repo, 99, patch);
+        let result = edit(&repo, RunContext::default(), 99, patch);
         assert!(matches!(result, Err(MhError::NotFound(_))));
     }
 
@@ -650,7 +711,7 @@ mod tests {
             end: Some(NaiveDate::from_ymd_opt(2026, 6, 5).unwrap()),
             ..EditPatch::default()
         };
-        let result = edit(&repo, 1, patch);
+        let result = edit(&repo, RunContext::default(), 1, patch);
         assert!(matches!(result, Err(MhError::InvalidInput(_))));
     }
 }

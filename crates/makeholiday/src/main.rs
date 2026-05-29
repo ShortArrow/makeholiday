@@ -1,6 +1,8 @@
+use std::io::IsTerminal;
+
 use clap::Parser;
 
-use makeholiday::application::use_cases;
+use makeholiday::application::use_cases::{self, RunContext};
 use makeholiday::icons;
 use makeholiday::infrastructure::FileCalendarRepository;
 use makeholiday::presentation::{Cli, Commands};
@@ -8,6 +10,17 @@ use makeholiday::presentation::{Cli, Commands};
 fn main() {
     let cli = Cli::parse();
     let repo = FileCalendarRepository::new(cli.file.clone());
+    let allow_prompts = if cli.no_interactive {
+        false
+    } else if cli.interactive {
+        true
+    } else {
+        std::io::stdin().is_terminal()
+    };
+    let ctx = RunContext {
+        quiet: cli.quiet,
+        allow_prompts,
+    };
     let result = match cli.command {
         Commands::Init => use_cases::init(&repo),
         Commands::Add {
@@ -20,6 +33,7 @@ fn main() {
             icon,
         } => use_cases::add(
             &repo,
+            ctx,
             summary.as_deref(),
             start,
             end,
@@ -63,14 +77,14 @@ fn main() {
                 icon,
                 clear_icon: icon_clear,
             };
-            use_cases::edit(&repo, index, patch)
+            use_cases::edit(&repo, ctx, index, patch)
         }
         Commands::Icons => {
             println!("{}", icons::format_icons_list());
             Ok(())
         }
         Commands::Remove { target, summary } => {
-            use_cases::remove(&repo, summary.as_deref(), target.as_deref())
+            use_cases::remove(&repo, ctx, summary.as_deref(), target.as_deref())
         }
     };
     if let Err(e) = result {

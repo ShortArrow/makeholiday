@@ -72,6 +72,18 @@ pub struct Cli {
     #[arg(long, short, global = true, default_value = DEFAULT_FILE)]
     pub file: PathBuf,
 
+    /// Suppress status / warning messages
+    #[arg(long, short, global = true, default_value_t = false)]
+    pub quiet: bool,
+
+    /// Force interactive prompts even when stdin is not a TTY
+    #[arg(long, global = true, conflicts_with = "no_interactive")]
+    pub interactive: bool,
+
+    /// Disable interactive prompts; missing required arguments error out
+    #[arg(long, global = true)]
+    pub no_interactive: bool,
+
     #[command(subcommand)]
     pub command: Commands,
 }
