@@ -1,13 +1,15 @@
 use clap::Parser;
 
+use makeholiday::application::use_cases;
 use makeholiday::cli::{Cli, Commands};
-use makeholiday::{commands, icons};
+use makeholiday::icons;
+use makeholiday::infrastructure::FileCalendarRepository;
 
 fn main() {
     let cli = Cli::parse();
-    let file = &cli.file;
+    let repo = FileCalendarRepository::new(cli.file.clone());
     let result = match cli.command {
-        Commands::Init => commands::init(file),
+        Commands::Init => use_cases::init(&repo),
         Commands::Add {
             summary,
             start,
@@ -16,8 +18,8 @@ fn main() {
             class,
             category,
             icon,
-        } => commands::add(
-            file,
+        } => use_cases::add(
+            &repo,
             summary.as_deref(),
             start,
             end,
@@ -28,7 +30,7 @@ fn main() {
         ),
         Commands::List { sort, desc, json } => {
             let keys: Vec<_> = sort.iter().map(|s| s.to_sort_key()).collect();
-            commands::list(file, &keys, desc, json).map(|output| {
+            use_cases::list(&repo, &keys, desc, json).map(|output| {
                 if !output.is_empty() {
                     println!("{output}");
                 }
@@ -39,7 +41,7 @@ fn main() {
             Ok(())
         }
         Commands::Remove { target, summary } => {
-            commands::remove(file, summary.as_deref(), target.as_deref())
+            use_cases::remove(&repo, summary.as_deref(), target.as_deref())
         }
     };
     if let Err(e) = result {

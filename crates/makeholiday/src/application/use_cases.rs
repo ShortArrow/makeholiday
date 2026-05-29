@@ -1,18 +1,16 @@
+//! Use cases — free functions orchestrating I/O via `CalendarRepository`
+//! and pure domain logic via `ics_core`.
+
 use std::io::{self, BufRead, Write};
-use std::path::Path;
 
 use chrono::NaiveDate;
-
 use ics_core::{self as ics, VEvent};
 
+use crate::application::ports::CalendarRepository;
 use crate::error::{MhError, Result};
 
-pub fn init(file: &Path) -> Result<()> {
-    if file.exists() {
-        return Err(MhError::already_exists(file));
-    }
-    let content = ics::format_calendar(&[]);
-    std::fs::write(file, content.as_bytes()).map_err(|e| MhError::io(file, e))
+pub fn init<R: CalendarRepository>(repo: &R) -> Result<()> {
+    repo.create()
 }
 
 fn resolve_add_params(
@@ -73,9 +71,9 @@ fn resolve_add_params(
     Ok((summary, start, end))
 }
 
-#[allow(clippy::too_many_arguments)] // ADR-009/010 restructure will replace this with a request struct
-pub fn add(
-    file: &Path,
+#[allow(clippy::too_many_arguments)] // ADR-001 Migration will replace flat args with a request struct
+pub fn add<R: CalendarRepository>(
+    repo: &R,
     summary: Option<&str>,
     start: Option<NaiveDate>,
     end: Option<NaiveDate>,
@@ -100,7 +98,7 @@ pub fn add(
         None => start + chrono::Days::new(1),
     };
 
-    let content = std::fs::read_to_string(file).map_err(|e| MhError::io(file, e))?;
+    let content = repo.load()?;
 
     let event = VEvent {
         uid: uuid::Uuid::new_v4().to_string(),
@@ -115,20 +113,20 @@ pub fn add(
     };
 
     let new_content = ics::insert_event(&content, &event)?;
-    std::fs::write(file, new_content.as_bytes()).map_err(|e| MhError::io(file, e))?;
+    repo.save(&new_content)?;
 
     let line = ics::format_event_line(&event);
     eprintln!("Added: {line}");
     Ok(())
 }
 
-pub fn list(
-    file: &Path,
+pub fn list<R: CalendarRepository>(
+    repo: &R,
     sort_keys: &[ics::SortKey],
     descending: bool,
     json: bool,
 ) -> Result<String> {
-    let content = std::fs::read_to_string(file).map_err(|e| MhError::io(file, e))?;
+    let content = repo.load()?;
     let events = ics::parse_events(&content)?;
     let events = if sort_keys.is_empty() {
         events
@@ -149,8 +147,12 @@ pub fn list(
     }
 }
 
-pub fn remove(file: &Path, summary: Option<&str>, target: Option<&str>) -> Result<()> {
-    let content = std::fs::read_to_string(file).map_err(|e| MhError::io(file, e))?;
+pub fn remove<R: CalendarRepository>(
+    repo: &R,
+    summary: Option<&str>,
+    target: Option<&str>,
+) -> Result<()> {
+    let content = repo.load()?;
     let events = ics::parse_events(&content)?;
 
     let (new_content, removed_desc) = match (summary, target) {
@@ -183,7 +185,6 @@ pub fn remove(file: &Path, summary: Option<&str>, target: Option<&str>) -> Resul
             (ics::remove_events_by_indices(&content, &indices)?, desc)
         }
         (None, None) => {
-            // Interactive mode
             if events.is_empty() {
                 return Err(MhError::NotFound("No events to remove".to_string()));
             }
@@ -210,7 +211,7 @@ pub fn remove(file: &Path, summary: Option<&str>, target: Option<&str>) -> Resul
         }
     };
 
-    std::fs::write(file, new_content.as_bytes()).map_err(|e| MhError::io(file, e))?;
+    repo.save(&new_content)?;
     eprintln!("Removed: {removed_desc}");
     Ok(())
 }
@@ -218,36 +219,56 @@ pub fn remove(file: &Path, summary: Option<&str>, target: Option<&str>) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infrastructure::FileCalendarRepository;
     use tempfile::TempDir;
 
-    fn temp_file(dir: &TempDir, name: &str) -> std::path::PathBuf {
-        dir.path().join(name)
+    fn temp_repo(dir: &TempDir, name: &str) -> FileCalendarRepository {
+        FileCalendarRepository::new(dir.path().join(name))
     }
 
     #[test]
     fn init_creates_valid_ics() {
         let dir = TempDir::new().unwrap();
-        let path = temp_file(&dir, "test.ics");
-        init(&path).unwrap();
-        let content = std::fs::read_to_string(&path).unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        let content = repo.load().unwrap();
         assert_eq!(content, ics::format_calendar(&[]));
     }
 
     #[test]
     fn init_fails_if_exists() {
         let dir = TempDir::new().unwrap();
-        let path = temp_file(&dir, "test.ics");
-        init(&path).unwrap();
-        let result = init(&path);
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        let result = init(&repo);
         assert!(matches!(result, Err(MhError::AlreadyExists { .. })));
     }
 
-    fn add_free(path: &std::path::Path, summary: &str, start: NaiveDate, end: Option<NaiveDate>) {
+    fn add_free(repo: &FileCalendarRepository, summary: &str, start: NaiveDate) {
         add(
-            path,
+            repo,
             Some(summary),
             Some(start),
-            end,
+            None,
+            ics::BusyStatus::Free,
+            None,
+            vec![],
+            None,
+        )
+        .unwrap();
+    }
+
+    fn add_free_with_end(
+        repo: &FileCalendarRepository,
+        summary: &str,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) {
+        add(
+            repo,
+            Some(summary),
+            Some(start),
+            Some(end),
             ics::BusyStatus::Free,
             None,
             vec![],
@@ -259,15 +280,10 @@ mod tests {
     #[test]
     fn add_one_event() {
         let dir = TempDir::new().unwrap();
-        let path = temp_file(&dir, "test.ics");
-        init(&path).unwrap();
-        add_free(
-            &path,
-            "元日",
-            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
-            None,
-        );
-        let content = std::fs::read_to_string(&path).unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        add_free(&repo, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+        let content = repo.load().unwrap();
         assert!(content.contains("SUMMARY:元日"));
         assert!(content.contains("BEGIN:VEVENT"));
         assert!(content.contains("DTSTAMP:"));
@@ -276,21 +292,15 @@ mod tests {
     #[test]
     fn add_two_events_distinct_uids() {
         let dir = TempDir::new().unwrap();
-        let path = temp_file(&dir, "test.ics");
-        init(&path).unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        add_free(&repo, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
         add_free(
-            &path,
-            "元日",
-            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
-            None,
-        );
-        add_free(
-            &path,
+            &repo,
             "建国記念の日",
             NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(),
-            None,
         );
-        let content = std::fs::read_to_string(&path).unwrap();
+        let content = repo.load().unwrap();
         let events = ics::parse_events(&content).unwrap();
         assert_eq!(events.len(), 2);
         assert_ne!(events[0].uid, events[1].uid);
@@ -299,21 +309,16 @@ mod tests {
     #[test]
     fn list_returns_numbered_lines() {
         let dir = TempDir::new().unwrap();
-        let path = temp_file(&dir, "test.ics");
-        init(&path).unwrap();
-        add_free(
-            &path,
-            "元日",
-            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
-            None,
-        );
-        add_free(
-            &path,
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        add_free(&repo, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+        add_free_with_end(
+            &repo,
             "年末年始",
             NaiveDate::from_ymd_opt(2026, 12, 29).unwrap(),
-            Some(NaiveDate::from_ymd_opt(2027, 1, 3).unwrap()),
+            NaiveDate::from_ymd_opt(2027, 1, 3).unwrap(),
         );
-        let output = list(&path, &[], false, false).unwrap();
+        let output = list(&repo, &[], false, false).unwrap();
         assert!(output.contains("1: 2026-01-01 : 元日"));
         assert!(output.contains("2: 2026-12-29 to 2027-01-03 : 年末年始"));
     }
@@ -321,10 +326,10 @@ mod tests {
     #[test]
     fn add_end_before_start_errors() {
         let dir = TempDir::new().unwrap();
-        let path = temp_file(&dir, "test.ics");
-        init(&path).unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
         let result = add(
-            &path,
+            &repo,
             Some("invalid"),
             Some(NaiveDate::from_ymd_opt(2026, 3, 1).unwrap()),
             Some(NaiveDate::from_ymd_opt(2026, 2, 1).unwrap()),
@@ -339,22 +344,16 @@ mod tests {
     #[test]
     fn remove_by_summary() {
         let dir = TempDir::new().unwrap();
-        let path = temp_file(&dir, "test.ics");
-        init(&path).unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        add_free(&repo, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
         add_free(
-            &path,
-            "元日",
-            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
-            None,
-        );
-        add_free(
-            &path,
+            &repo,
             "建国記念の日",
             NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(),
-            None,
         );
-        remove(&path, Some("元日"), None).unwrap();
-        let output = list(&path, &[], false, false).unwrap();
+        remove(&repo, Some("元日"), None).unwrap();
+        let output = list(&repo, &[], false, false).unwrap();
         assert!(!output.contains("元日"));
         assert!(output.contains("建国記念の日"));
     }
@@ -362,22 +361,16 @@ mod tests {
     #[test]
     fn remove_by_index() {
         let dir = TempDir::new().unwrap();
-        let path = temp_file(&dir, "test.ics");
-        init(&path).unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        add_free(&repo, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
         add_free(
-            &path,
-            "元日",
-            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
-            None,
-        );
-        add_free(
-            &path,
+            &repo,
             "建国記念の日",
             NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(),
-            None,
         );
-        remove(&path, None, Some("1")).unwrap();
-        let output = list(&path, &[], false, false).unwrap();
+        remove(&repo, None, Some("1")).unwrap();
+        let output = list(&repo, &[], false, false).unwrap();
         assert!(!output.contains("元日"));
         assert!(output.contains("建国記念の日"));
     }
@@ -385,10 +378,10 @@ mod tests {
     #[test]
     fn add_with_busystatus_and_class() {
         let dir = TempDir::new().unwrap();
-        let path = temp_file(&dir, "test.ics");
-        init(&path).unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
         add(
-            &path,
+            &repo,
             Some("不在"),
             Some(NaiveDate::from_ymd_opt(2026, 8, 1).unwrap()),
             None,
@@ -398,7 +391,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let content = std::fs::read_to_string(&path).unwrap();
+        let content = repo.load().unwrap();
         assert!(content.contains("X-MICROSOFT-CDO-BUSYSTATUS:OOF"));
         assert!(content.contains("TRANSP:OPAQUE"));
         assert!(content.contains("CLASS:PRIVATE"));

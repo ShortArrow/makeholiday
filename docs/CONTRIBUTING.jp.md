@@ -35,10 +35,16 @@ crates/
   makeholiday/                    # CLI バイナリクレート
     Cargo.toml
     src/
-      main.rs                     # エントリポイント。サブコマンドを振り分ける
+      main.rs                     # Composition Root — リポジトリ配線とサブコマンド振り分け
+      lib.rs                      # ライブラリ表面（下記モジュールを re-export）
       cli.rs                      # Clap 定義、日付パース
-      commands.rs                 # init / add / list / remove のオーケストレーション
+      error.rs                    # MhError（ADR-012）
       icons.rs                    # makeholiday namespace の PRESET_ICONS テーブル
+      application/
+        ports.rs                  # CalendarRepository trait（ADR-011）
+        use_cases.rs              # init / add / list / remove のユースケース関数
+      infrastructure/
+        file_calendar_repository.rs  # tempfile + persist による atomic write 実装
     tests/
       cli.rs                      # assert_cmd による統合テスト
 docs/

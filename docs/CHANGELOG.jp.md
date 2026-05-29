@@ -14,7 +14,9 @@
 - 型モデル（`VEvent`, `BusyStatus`, `EventClass`, `SortKey`）とパーサ・フォーマッタ・クエリヘルパを `crates/makeholiday/src/ics.rs` から `crates/ics-core/src/{event,calendar,parser,query}.rs` に移動（ADR-017 Migration Step 3）。makeholiday は `ics_core` 経由で型を利用するように変更。makeholiday namespace のプリセットアイコン（`PRESET_ICONS`, `format_icons_list`）は新規 `crates/makeholiday/src/icons.rs` に切り出し、`ics-core` には載せない。挙動変更なし。
 - 型付き `ics_core::Error` を導入（ADR-017 §error type relationship）。`parse_events`, `parse_indices`, `insert_event`, `remove_event_by_summary`, `remove_events_by_indices` の返却型を `Result<T, String>` から `Result<T, ics_core::Error>` に変更。`Parse` バリアントは `message` に加えオプショナルな `line` と `property` を持ち、現状の flat parser では None のまま。ADR-019 の lexer ベースパーサが値を埋める。
 - `makeholiday::error::MhError` を導入（ADR-012 / ADR-017 §error type relationship）。6 バリアント: `Io { path, source }`, `Parse(#[from] ics_core::Error)`, `InvalidInput(String)`, `Conflict(String)`, `NotFound(String)`, `AlreadyExists { path }`。`commands::*` は `Result<_, MhError>` を返却、`ics_core::Error` は `#[from]` 経由で `?` 伝播。テストは `matches!(err, MhError::InvalidInput(_))` の形でバリアントを検証するように更新。
-- `crates/makeholiday/src/lib.rs` を新設（ADR-010 / ADR-017 準拠）し `pub mod cli; pub mod commands; pub mod error; pub mod icons;` を宣言。`main.rs` は `use makeholiday::*` で取り込む薄い Composition Root に。ライブラリ表面を持つことで、将来のユースケース単体テストや ADR-022 の TUI からの再利用が可能に。
+- `crates/makeholiday/src/lib.rs` を新設（ADR-010 / ADR-017 準拠）しライブラリモジュールを宣言。`main.rs` は `use makeholiday::*` で取り込む薄い Composition Root に。ライブラリ表面を持つことで、将来のユースケース単体テストや ADR-022 の TUI からの再利用が可能に。
+- `CalendarRepository` ポート（ADR-011）を `application::ports` に、ディスク実装 `FileCalendarRepository` を `infrastructure::file_calendar_repository` に新設。書き込みは `tempfile::NamedTempFile` + `persist` / `persist_noclobber` で原子化。プロセス中断で半端なファイルが残る可能性を排除。`tempfile = "3"` は `[dev-dependencies]` から `[dependencies]` へ移動。
+- 旧 `commands.rs` のユースケースを `application::use_cases` に切り出し（ADR-009/017）。各ユースケースは `&Path` ではなく `&impl CalendarRepository` を受け取り、ファイル/パスの関心は Composition Root に集約。`commands.rs` 削除、9 件のテストは `use_cases.rs` に移動してリポジトリ抽象を検証。
 
 ### 追加
 - ドキュメント基盤一式: `README`, `PRD`, `CONTRIBUTING`, `SETUP`, `USAGE`（英語版と日本語版）。
