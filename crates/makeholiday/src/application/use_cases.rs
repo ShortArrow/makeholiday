@@ -46,7 +46,7 @@ fn resolve_add_params(
             reader
                 .read_line(&mut line)
                 .map_err(|e| MhError::io("<stdin>", e))?;
-            crate::cli::parse_date(line.trim()).map_err(MhError::InvalidInput)?
+            crate::input::parse_date(line.trim()).map_err(MhError::InvalidInput)?
         }
     };
     let end = match end {
@@ -64,7 +64,7 @@ fn resolve_add_params(
             if trimmed.is_empty() {
                 None
             } else {
-                Some(crate::cli::parse_date(trimmed).map_err(MhError::InvalidInput)?)
+                Some(crate::input::parse_date(trimmed).map_err(MhError::InvalidInput)?)
             }
         }
     };

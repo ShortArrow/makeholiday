@@ -1,9 +1,9 @@
 use clap::Parser;
 
 use makeholiday::application::use_cases;
-use makeholiday::cli::{Cli, Commands};
 use makeholiday::icons;
 use makeholiday::infrastructure::FileCalendarRepository;
+use makeholiday::presentation::{Cli, Commands};
 
 fn main() {
     let cli = Cli::parse();

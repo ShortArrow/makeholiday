@@ -37,14 +37,16 @@ crates/
     src/
       main.rs                     # Composition Root — wires repository + dispatches subcommands
       lib.rs                      # Library surface (re-exports the modules below)
-      cli.rs                      # Clap definitions, date parsing
       error.rs                    # MhError (ADR-012)
       icons.rs                    # Makeholiday-namespace PRESET_ICONS table
+      input.rs                    # Shared date-string parser
       application/
         ports.rs                  # CalendarRepository trait (ADR-011)
         use_cases.rs              # init / add / list / remove free functions
       infrastructure/
         file_calendar_repository.rs  # Atomic write impl via tempfile + persist
+      presentation/
+        cli.rs                    # Clap definitions, subcommand structs
     tests/
       cli.rs                      # Integration tests via assert_cmd
 docs/

@@ -4,7 +4,8 @@
 //! the bin is a thin Composition Root that wires this library together.
 
 pub mod application;
-pub mod cli;
 pub mod error;
 pub mod icons;
 pub mod infrastructure;
+pub mod input;
+pub mod presentation;

@@ -17,6 +17,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Introduced `crates/makeholiday/src/lib.rs` (per ADR-010 / ADR-017) declaring the library modules. `main.rs` becomes a slim Composition Root that imports via `use makeholiday::*`. The library surface lets future use-case unit tests (and a future TUI per ADR-022) reuse this code without spawning the binary.
 - Introduced the `CalendarRepository` port (ADR-011) at `application::ports` and its disk-backed implementation `FileCalendarRepository` at `infrastructure::file_calendar_repository`. Writes are now atomic via `tempfile::NamedTempFile` + `persist` / `persist_noclobber` — half-written calendar files from a process abort are no longer possible. `tempfile = "3"` moves from `[dev-dependencies]` to `[dependencies]`.
 - Extracted use cases from the former `commands.rs` into `application::use_cases` (ADR-009/017). Each use case takes `&impl CalendarRepository` instead of `&Path`; the file/path concern lives at the Composition Root. `commands.rs` is deleted; its 9 tests move to `use_cases.rs` and now exercise the repository abstraction.
+- Relocated `cli.rs` to `presentation/cli.rs` (ADR-009 presentation layer). Extracted `parse_date` from `cli.rs` into the new `crate::input` module so both the presentation layer (clap `value_parser`) and the application layer (interactive prompts) reuse it without crossing layer boundaries.
 
 ### Added
 - Initial documentation scaffold: `README`, `PRD`, `CONTRIBUTING`, `SETUP`, `USAGE` (English + Japanese mirrors).

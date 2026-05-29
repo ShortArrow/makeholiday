@@ -60,28 +60,9 @@ impl CliEventClass {
     }
 }
 
-const DEFAULT_FILE: &str = "calendar.ics";
+use crate::input::parse_date;
 
-pub fn parse_date(s: &str) -> Result<NaiveDate, String> {
-    if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        return Ok(d);
-    }
-    let parts: Vec<&str> = s.split('/').collect();
-    if parts.len() == 3 {
-        if let (Ok(y), Ok(m), Ok(d)) = (
-            parts[0].parse::<i32>(),
-            parts[1].parse::<u32>(),
-            parts[2].parse::<u32>(),
-        ) {
-            if let Some(date) = NaiveDate::from_ymd_opt(y, m, d) {
-                return Ok(date);
-            }
-        }
-    }
-    Err(format!(
-        "invalid date '{s}' (expected YYYY-MM-DD or YYYY/M/D)"
-    ))
-}
+const DEFAULT_FILE: &str = "calendar.ics";
 
 #[derive(Parser)]
 #[command(name = "makeholiday", about = "ICS calendar file manager")]

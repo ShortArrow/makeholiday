@@ -37,14 +37,16 @@ crates/
     src/
       main.rs                     # Composition Root — リポジトリ配線とサブコマンド振り分け
       lib.rs                      # ライブラリ表面（下記モジュールを re-export）
-      cli.rs                      # Clap 定義、日付パース
       error.rs                    # MhError（ADR-012）
       icons.rs                    # makeholiday namespace の PRESET_ICONS テーブル
+      input.rs                    # 日付文字列パーサ（プレゼンテーションとアプリで共有）
       application/
         ports.rs                  # CalendarRepository trait（ADR-011）
         use_cases.rs              # init / add / list / remove のユースケース関数
       infrastructure/
         file_calendar_repository.rs  # tempfile + persist による atomic write 実装
+      presentation/
+        cli.rs                    # Clap 定義、サブコマンド構造体
     tests/
       cli.rs                      # assert_cmd による統合テスト
 docs/

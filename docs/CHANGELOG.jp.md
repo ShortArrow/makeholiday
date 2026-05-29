@@ -17,6 +17,7 @@
 - `crates/makeholiday/src/lib.rs` を新設（ADR-010 / ADR-017 準拠）しライブラリモジュールを宣言。`main.rs` は `use makeholiday::*` で取り込む薄い Composition Root に。ライブラリ表面を持つことで、将来のユースケース単体テストや ADR-022 の TUI からの再利用が可能に。
 - `CalendarRepository` ポート（ADR-011）を `application::ports` に、ディスク実装 `FileCalendarRepository` を `infrastructure::file_calendar_repository` に新設。書き込みは `tempfile::NamedTempFile` + `persist` / `persist_noclobber` で原子化。プロセス中断で半端なファイルが残る可能性を排除。`tempfile = "3"` は `[dev-dependencies]` から `[dependencies]` へ移動。
 - 旧 `commands.rs` のユースケースを `application::use_cases` に切り出し（ADR-009/017）。各ユースケースは `&Path` ではなく `&impl CalendarRepository` を受け取り、ファイル/パスの関心は Composition Root に集約。`commands.rs` 削除、9 件のテストは `use_cases.rs` に移動してリポジトリ抽象を検証。
+- `cli.rs` を `presentation/cli.rs` に再配置（ADR-009 プレゼンテーション層）。`parse_date` を `cli.rs` から新規 `crate::input` モジュールへ抽出し、プレゼンテーション層（clap `value_parser`）とアプリケーション層（対話プロンプト）が層越境せずに共用できるよう変更。
 
 ### 追加
 - ドキュメント基盤一式: `README`, `PRD`, `CONTRIBUTING`, `SETUP`, `USAGE`（英語版と日本語版）。
