@@ -56,6 +56,8 @@ deny.toml                         # cargo-deny config
 - **Branch naming.** `<type>/<short-slug>`, e.g. `feat/add-rrule`, `fix/parse-date`, `docs/contributing`.
 - **One concern per PR.** Mix-ups between refactors and behavior changes make review harder.
 
+> **Solo-phase carve-out:** while the project is in its solo phase, direct-to-`main` commits are permitted instead of feature branches + PRs. The carve-out auto-expires when `ics-core` is split to its own repository, when any external contributor opens a PR, or at `v1.0.0`. CI remains the gate (test matrix + clippy `-D warnings` + fmt + `cargo deny`); the "one concern per commit" and Conventional Commits rules above still apply. See [ADR-024](design/024-solo-phase-branching-carve-out.md).
+
 ## Commit Messages
 
 Follow the existing Conventional Commits-flavored style visible in `git log`:

@@ -16,6 +16,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 - Initial documentation scaffold: `README`, `PRD`, `CONTRIBUTING`, `SETUP`, `USAGE` (English + Japanese mirrors).
 - ADRs 000–023 covering ADR policy, vendor extension typing model, language/edition, dual licensing, trunk-based development + SemVer, Conventional Commits, testing strategy, documentation language policy, MSRV, module layering, lib/main separation, I/O boundary + repository pattern, error handling, dependency policy, CI/CD platform, diagnostic output, configuration policy, workspace + `ics-core` crate, round-trip strategy, parser implementation, CLI subcommand policy, VTODO scope, TUI front-end policy, and the explicit rejection of a `convert` subcommand.
+- [ADR-024](docs/design/024-solo-phase-branching-carve-out.md) — solo-phase carve-out that suspends the ADR-004 feature-branch + PR ceremony until `ics-core` is split, an external contributor opens a PR, or `v1.0.0` is tagged.
 
 ## [0.1.0]
 

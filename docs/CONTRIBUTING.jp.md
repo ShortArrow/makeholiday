@@ -56,6 +56,8 @@ deny.toml                         # cargo-deny 設定
 - **ブランチ命名:** `<type>/<short-slug>`。例: `feat/add-rrule`, `fix/parse-date`, `docs/contributing`。
 - **1 PR 1 関心事.** リファクタリングと挙動変更を混ぜないこと。レビューが困難になります。
 
+> **Solo フェーズ例外:** プロジェクトが solo フェーズの間は、feature ブランチ + PR ではなく `main` 直接コミットを許容します。`ics-core` を別リポジトリに切り出した時点、外部コントリビュータが PR を開いた時点、または `v1.0.0` タグ時点で自動的に解除されます。CI（テストマトリクス + clippy `-D warnings` + fmt + `cargo deny`）が gate として残り、「1 コミット 1 関心事」と Conventional Commits は引き続き適用します。[ADR-024](design/024-solo-phase-branching-carve-out.md) 参照。
+
 ## コミットメッセージ
 
 `git log` に見られる既存スタイル（Conventional Commits 風）を踏襲してください:

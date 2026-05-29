@@ -2,6 +2,7 @@
 
 - Status: **Accepted** (retroactive)
 - Date: 2026-05-27
+- Amended by: [ADR-024](024-solo-phase-branching-carve-out.md) — suspends the feature-branch + PR ceremony during the solo phase.
 
 ## Context
 
