@@ -36,6 +36,35 @@ fn main() {
                 }
             })
         }
+        Commands::Edit {
+            index,
+            summary,
+            start,
+            end,
+            busystatus,
+            class,
+            category,
+            category_clear,
+            icon,
+            icon_clear,
+        } => {
+            let patch = use_cases::EditPatch {
+                summary,
+                start,
+                end,
+                busystatus: busystatus.map(|b| b.to_busystatus()),
+                class: class.map(|c| c.to_event_class()),
+                categories: if category.is_empty() {
+                    None
+                } else {
+                    Some(category)
+                },
+                clear_categories: category_clear,
+                icon,
+                clear_icon: icon_clear,
+            };
+            use_cases::edit(&repo, index, patch)
+        }
         Commands::Icons => {
             println!("{}", icons::format_icons_list());
             Ok(())

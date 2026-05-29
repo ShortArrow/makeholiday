@@ -116,6 +116,41 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         json: bool,
     },
+    /// Edit an existing event in place by 1-based index
+    Edit {
+        /// 1-based event index to edit (look up via `makeholiday list`)
+        index: usize,
+        /// Replace the event title
+        #[arg(long)]
+        summary: Option<String>,
+        /// Replace the start date (inclusive)
+        #[arg(long, value_parser = parse_date)]
+        start: Option<NaiveDate>,
+        /// Replace the end date (inclusive); pass an empty string to drop a
+        /// multi-day end and convert to a single-day event
+        #[arg(long, value_parser = parse_date)]
+        end: Option<NaiveDate>,
+        /// Replace the busy status: free, tentative, busy, oof, working
+        #[arg(long, value_enum)]
+        busystatus: Option<CliBusyStatus>,
+        /// Replace the event class: public, private, confidential
+        #[arg(long, value_enum)]
+        class: Option<CliEventClass>,
+        /// Replace the category list (repeatable). Pass --category-clear to
+        /// drop categories entirely.
+        #[arg(long)]
+        category: Vec<String>,
+        /// Drop all categories before applying --category. Pass --category-clear
+        /// with no --category to leave the event with no categories.
+        #[arg(long, default_value_t = false)]
+        category_clear: bool,
+        /// Replace the makeholiday icon
+        #[arg(long)]
+        icon: Option<String>,
+        /// Drop the icon. Mutually exclusive with --icon.
+        #[arg(long, default_value_t = false, conflicts_with = "icon")]
+        icon_clear: bool,
+    },
     /// List available preset icon names
     Icons,
     /// Remove an event from the calendar

@@ -132,6 +132,94 @@ pub fn add<R: CalendarRepository>(
     Ok(())
 }
 
+/// Patch describing which fields of an existing `VEvent` should be
+/// replaced by `edit`. `Some(_)` means "set this field"; `None` means
+/// "leave it alone". Toggles (`clear_categories`, `clear_icon`) are
+/// independent of the same-name fields and trigger removal even when
+/// no replacement is provided.
+#[derive(Debug, Default)]
+pub struct EditPatch {
+    pub summary: Option<String>,
+    pub start: Option<NaiveDate>,
+    pub end: Option<NaiveDate>,
+    pub busystatus: Option<ics::microsoft::MsBusyStatus>,
+    pub class: Option<ics::EventClass>,
+    pub categories: Option<Vec<String>>,
+    pub clear_categories: bool,
+    pub icon: Option<String>,
+    pub clear_icon: bool,
+}
+
+pub fn edit<R: CalendarRepository>(repo: &R, index: usize, patch: EditPatch) -> Result<()> {
+    let mut cal = repo.load()?;
+    if index == 0 || index > cal.events.len() {
+        return Err(MhError::NotFound(format!(
+            "Index {index} out of range (1-{})",
+            cal.events.len()
+        )));
+    }
+    let event = &mut cal.events[index - 1];
+
+    if let Some(s) = patch.summary {
+        event.summary = s;
+    }
+    match (patch.start, patch.end) {
+        (Some(new_start), Some(new_end_incl)) => {
+            if new_end_incl < new_start {
+                return Err(MhError::InvalidInput(
+                    "--end must not be before --start".to_string(),
+                ));
+            }
+            event.dtstart = new_start;
+            event.dtend = new_end_incl + chrono::Days::new(1);
+        }
+        (Some(new_start), None) => {
+            // Move the event preserving its current duration.
+            let duration = event.dtend - event.dtstart;
+            event.dtstart = new_start;
+            event.dtend = new_start + duration;
+        }
+        (None, Some(new_end_incl)) => {
+            if new_end_incl < event.dtstart {
+                return Err(MhError::InvalidInput(
+                    "--end must not be before --start".to_string(),
+                ));
+            }
+            event.dtend = new_end_incl + chrono::Days::new(1);
+        }
+        (None, None) => {}
+    }
+
+    if let Some(bs) = patch.busystatus {
+        let ms = event
+            .microsoft
+            .get_or_insert_with(ics::microsoft::EventExtensions::default);
+        ms.busystatus = Some(bs);
+    }
+    if let Some(c) = patch.class {
+        event.class = Some(c);
+    }
+    if patch.clear_categories {
+        event.categories.clear();
+    }
+    if let Some(cats) = patch.categories {
+        if !cats.is_empty() {
+            event.categories = cats;
+        }
+    }
+    if patch.clear_icon {
+        event.unknown.retain(|p| p.name != icons::ICON_PROPERTY);
+    }
+    if let Some(icon_name) = patch.icon {
+        icons::write_icon(event, icon_name);
+    }
+
+    let line = format_event_line(event);
+    repo.save(&cal)?;
+    eprintln!("Edited: {line}");
+    Ok(())
+}
+
 pub fn list<R: CalendarRepository>(
     repo: &R,
     sort_keys: &[ics::SortKey],
@@ -410,5 +498,159 @@ mod tests {
             Some(ics::microsoft::MsBusyStatus::Oof)
         );
         assert_eq!(event.class, Some(ics::EventClass::Private));
+    }
+
+    // ADR-019 ship-blocker #4: `edit` subcommand.
+
+    #[test]
+    fn edit_replaces_summary() {
+        let dir = TempDir::new().unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        add_free(&repo, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+
+        let patch = EditPatch {
+            summary: Some("New Year".to_string()),
+            ..EditPatch::default()
+        };
+        edit(&repo, 1, patch).unwrap();
+
+        let cal = repo.load().unwrap();
+        assert_eq!(cal.events[0].summary, "New Year");
+    }
+
+    #[test]
+    fn edit_replaces_start_date() {
+        let dir = TempDir::new().unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        add_free(&repo, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+
+        let patch = EditPatch {
+            start: Some(NaiveDate::from_ymd_opt(2027, 1, 1).unwrap()),
+            ..EditPatch::default()
+        };
+        edit(&repo, 1, patch).unwrap();
+
+        let cal = repo.load().unwrap();
+        assert_eq!(
+            cal.events[0].dtstart,
+            NaiveDate::from_ymd_opt(2027, 1, 1).unwrap()
+        );
+    }
+
+    #[test]
+    fn edit_replaces_busystatus() {
+        let dir = TempDir::new().unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        add_free(
+            &repo,
+            "Travel",
+            NaiveDate::from_ymd_opt(2026, 8, 1).unwrap(),
+        );
+
+        let patch = EditPatch {
+            busystatus: Some(ics::microsoft::MsBusyStatus::Oof),
+            ..EditPatch::default()
+        };
+        edit(&repo, 1, patch).unwrap();
+
+        let cal = repo.load().unwrap();
+        assert_eq!(
+            cal.events[0].microsoft.as_ref().and_then(|m| m.busystatus),
+            Some(ics::microsoft::MsBusyStatus::Oof)
+        );
+    }
+
+    #[test]
+    fn edit_clears_icon() {
+        let dir = TempDir::new().unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        // Add an event with an icon via the add() use case.
+        add(
+            &repo,
+            Some("Travel"),
+            Some(NaiveDate::from_ymd_opt(2026, 8, 1).unwrap()),
+            None,
+            ics::microsoft::MsBusyStatus::Free,
+            None,
+            vec![],
+            Some("airplane".to_string()),
+        )
+        .unwrap();
+        assert_eq!(
+            icons::read_icon(&repo.load().unwrap().events[0]),
+            Some("airplane")
+        );
+
+        let patch = EditPatch {
+            clear_icon: true,
+            ..EditPatch::default()
+        };
+        edit(&repo, 1, patch).unwrap();
+
+        let cal = repo.load().unwrap();
+        assert_eq!(icons::read_icon(&cal.events[0]), None);
+    }
+
+    #[test]
+    fn edit_replaces_categories() {
+        let dir = TempDir::new().unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        add(
+            &repo,
+            Some("Mtg"),
+            Some(NaiveDate::from_ymd_opt(2026, 8, 1).unwrap()),
+            None,
+            ics::microsoft::MsBusyStatus::Free,
+            None,
+            vec!["old".to_string()],
+            None,
+        )
+        .unwrap();
+
+        let patch = EditPatch {
+            categories: Some(vec!["work".to_string(), "important".to_string()]),
+            clear_categories: true,
+            ..EditPatch::default()
+        };
+        edit(&repo, 1, patch).unwrap();
+
+        let cal = repo.load().unwrap();
+        assert_eq!(cal.events[0].categories, vec!["work", "important"]);
+    }
+
+    #[test]
+    fn edit_out_of_range_returns_not_found() {
+        let dir = TempDir::new().unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        add_free(&repo, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+
+        let patch = EditPatch {
+            summary: Some("ignored".to_string()),
+            ..EditPatch::default()
+        };
+        let result = edit(&repo, 99, patch);
+        assert!(matches!(result, Err(MhError::NotFound(_))));
+    }
+
+    #[test]
+    fn edit_end_before_start_errors() {
+        let dir = TempDir::new().unwrap();
+        let repo = temp_repo(&dir, "test.ics");
+        init(&repo).unwrap();
+        add_free(&repo, "Trip", NaiveDate::from_ymd_opt(2026, 6, 1).unwrap());
+
+        let patch = EditPatch {
+            start: Some(NaiveDate::from_ymd_opt(2026, 6, 10).unwrap()),
+            end: Some(NaiveDate::from_ymd_opt(2026, 6, 5).unwrap()),
+            ..EditPatch::default()
+        };
+        let result = edit(&repo, 1, patch);
+        assert!(matches!(result, Err(MhError::InvalidInput(_))));
     }
 }
