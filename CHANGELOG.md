@@ -11,6 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Changed
 - Repository restructured into a Cargo workspace per [ADR-017](docs/design/017-workspace-and-ics-core-crate.md). `Cargo.toml` is now the workspace manifest; the `makeholiday` binary crate lives under `crates/makeholiday/`. No behavior change.
 - Added empty `crates/ics-core/` workspace member (Step 2 of ADR-017 Migration). Wired as a path dependency from `makeholiday`. No public surface yet; types and parser move in Step 3.
+- Moved typed model (`VEvent`, `BusyStatus`, `EventClass`, `SortKey`) and the parser / formatter / query helpers from `crates/makeholiday/src/ics.rs` into `crates/ics-core/src/{event,calendar,parser,query}.rs` (Step 3 of ADR-017 Migration). makeholiday now consumes the model via `ics_core`. Makeholiday-namespace preset icons (`PRESET_ICONS`, `format_icons_list`) relocate to a new `crates/makeholiday/src/icons.rs` rather than into `ics-core`. No behavior change. Error type stays `Result<T, String>`; the typed `ics_core::Error` lands with the ADR-009/010/012 layer restructure in Step 4.
 
 ### Added
 - Initial documentation scaffold: `README`, `PRD`, `CONTRIBUTING`, `SETUP`, `USAGE` (English + Japanese mirrors).

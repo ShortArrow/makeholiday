@@ -10,3 +10,5 @@ description = "Typed iCalendar (RFC 5545) model with vendor-extension support â€
 publish = false
 
 [dependencies]
+chrono.workspace = true
+serde.workspace = true

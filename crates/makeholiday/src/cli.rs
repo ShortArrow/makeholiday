@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand, ValueEnum};
 
-use crate::ics::{BusyStatus, EventClass, SortKey};
+use ics_core::{BusyStatus, EventClass, SortKey};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SortField {

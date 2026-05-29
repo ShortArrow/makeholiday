@@ -24,14 +24,21 @@ Cargo workspace per [ADR-017](design/017-workspace-and-ics-core-crate.md):
 ```
 Cargo.toml                        # workspace manifest ([workspace], shared deps)
 crates/
+  ics-core/                       # Shared ICS library — typed model, parser, formatter
+    Cargo.toml
+    src/
+      lib.rs                      # Crate root + re-exports
+      event.rs                    # VEvent, BusyStatus, EventClass, format_event_line
+      calendar.rs                 # VCALENDAR header/footer, format_vevent, format_calendar, insert_event
+      parser.rs                   # parse_events, parse_indices
+      query.rs                    # sort_events / SortKey / remove_event_by_* helpers
   makeholiday/                    # CLI binary crate
     Cargo.toml
     src/
       main.rs                     # Entry point, dispatches subcommands
       cli.rs                      # Clap definitions, date parsing
-      commands.rs                 # init / add / list / remove implementations
-      ics.rs                      # (temporary) ICS parsing, formatting, sorting —
-                                  #  moves to crates/ics-core/ in a later migration step
+      commands.rs                 # init / add / list / remove orchestration
+      icons.rs                    # Makeholiday-namespace PRESET_ICONS table
     tests/
       cli.rs                      # Integration tests via assert_cmd
 docs/

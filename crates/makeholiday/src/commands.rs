@@ -3,7 +3,7 @@ use std::path::Path;
 
 use chrono::NaiveDate;
 
-use crate::ics::{self, VEvent};
+use ics_core::{self as ics, VEvent};
 
 pub fn init(file: &Path) -> Result<(), String> {
     if file.exists() {

@@ -1,6 +1,6 @@
 mod cli;
 mod commands;
-mod ics;
+mod icons;
 
 use clap::Parser;
 use cli::{Cli, Commands};
@@ -37,7 +37,7 @@ fn main() {
             })
         }
         Commands::Icons => {
-            println!("{}", ics::format_icons_list());
+            println!("{}", icons::format_icons_list());
             Ok(())
         }
         Commands::Remove { target, summary } => {
