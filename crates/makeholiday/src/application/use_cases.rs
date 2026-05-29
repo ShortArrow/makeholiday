@@ -107,6 +107,7 @@ pub fn add<R: CalendarRepository>(
         dtstart: start,
         dtend,
         summary,
+        transp: None,
         busystatus,
         class,
         categories,

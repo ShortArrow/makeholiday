@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::event::{BusyStatus, EventClass, VEvent};
+use crate::event::{BusyStatus, EventClass, Transp, VEvent};
 use crate::raw::{RawComponent, RawProperty};
 use crate::vcalendar::VCalendar;
 use chrono::{NaiveDate, NaiveDateTime};
@@ -97,6 +97,7 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
     let mut dtstart: Option<NaiveDate> = None;
     let mut dtend: Option<NaiveDate> = None;
     let mut summary = String::new();
+    let mut transp: Option<Transp> = None;
     let mut busystatus = BusyStatus::Free;
     let mut class: Option<EventClass> = None;
     let mut categories: Vec<String> = Vec::new();
@@ -119,6 +120,7 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
                     dtstart: s,
                     dtend: e,
                     summary,
+                    transp,
                     busystatus,
                     class,
                     categories,
@@ -154,6 +156,8 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
             );
         } else if let Some(val) = line.strip_prefix("SUMMARY:") {
             summary = val.to_string();
+        } else if let Some(val) = line.strip_prefix("TRANSP:") {
+            transp = Transp::from_ics(val);
         } else if let Some(val) = line.strip_prefix("X-MICROSOFT-CDO-BUSYSTATUS:") {
             if let Some(bs) = BusyStatus::from_cdo(val) {
                 busystatus = bs;
@@ -329,7 +333,11 @@ mod tests {
         let cal = format_calendar(&vcal(vec![event.clone()]));
         let parsed = parse_calendar(&cal).unwrap();
         assert_eq!(parsed.events.len(), 1);
-        assert_eq!(parsed.events[0], event);
+        // The formatter always emits TRANSP (derived from busystatus when
+        // transp is None) so the parsed event carries it as a typed field.
+        let mut expected = event.clone();
+        expected.transp = Some(crate::Transp::Transparent);
+        assert_eq!(parsed.events[0], expected);
     }
 
     #[test]
@@ -526,6 +534,51 @@ mod tests {
         assert_eq!(alarm.properties.len(), 3);
         let names: Vec<_> = alarm.properties.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(names, vec!["ACTION", "TRIGGER", "DESCRIPTION"]);
+    }
+
+    // ADR-001 Migration Step 3 — TRANSP typed field.
+
+    #[test]
+    fn transp_field_parses_from_input() {
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:s\r\n");
+        input.push_str("TRANSP:OPAQUE\r\n");
+        input.push_str("END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        assert_eq!(parsed.events[0].transp, Some(crate::Transp::Opaque));
+    }
+
+    #[test]
+    fn transp_field_overrides_busystatus_derived_transp_on_output() {
+        // If transp is explicitly set, the formatter must honor it even
+        // when busystatus would derive a different value.
+        let mut event = make_event("transp-override", (2026, 4, 29), (2026, 4, 30), "s");
+        event.busystatus = BusyStatus::Oof; // derives OPAQUE
+        event.transp = Some(crate::Transp::Transparent); // typed override
+        let cal = format_calendar(&vcal(vec![event]));
+        assert!(cal.contains("TRANSP:TRANSPARENT\r\n"));
+        assert!(cal.contains("X-MICROSOFT-CDO-BUSYSTATUS:OOF\r\n"));
+    }
+
+    #[test]
+    fn transp_none_falls_back_to_busystatus_derived_value() {
+        let mut event = make_event("transp-fallback", (2026, 4, 29), (2026, 4, 30), "s");
+        event.busystatus = BusyStatus::Oof; // derives OPAQUE
+        event.transp = None;
+        let cal = format_calendar(&vcal(vec![event]));
+        assert!(cal.contains("TRANSP:OPAQUE\r\n"));
+    }
+
+    #[test]
+    fn transp_round_trip_preserves_typed_value() {
+        let mut event = make_event("transp-rt", (2026, 4, 29), (2026, 4, 30), "s");
+        event.transp = Some(crate::Transp::Opaque);
+        let cal = format_calendar(&vcal(vec![event.clone()]));
+        let parsed = parse_calendar(&cal).unwrap();
+        assert_eq!(parsed.events[0].transp, Some(crate::Transp::Opaque));
     }
 
     #[test]

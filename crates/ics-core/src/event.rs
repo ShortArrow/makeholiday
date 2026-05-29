@@ -70,6 +70,31 @@ impl EventClass {
     }
 }
 
+/// RFC 5545 §3.8.2.7 `TRANSP` — time-transparency for free/busy lookups.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Transp {
+    Transparent,
+    Opaque,
+}
+
+impl Transp {
+    pub fn ics_value(self) -> &'static str {
+        match self {
+            Transp::Transparent => "TRANSPARENT",
+            Transp::Opaque => "OPAQUE",
+        }
+    }
+
+    pub fn from_ics(s: &str) -> Option<Self> {
+        match s {
+            "TRANSPARENT" => Some(Transp::Transparent),
+            "OPAQUE" => Some(Transp::Opaque),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VEvent {
     pub uid: String,
@@ -80,6 +105,12 @@ pub struct VEvent {
     #[serde(serialize_with = "serialize_date")]
     pub dtend: NaiveDate,
     pub summary: String,
+    /// RFC 5545 `TRANSP`. ADR-001 Migration Step 3 introduces this as a
+    /// first-class typed field; Step 4 moves the legacy `busystatus`
+    /// (which today carries Microsoft `X-MICROSOFT-CDO-BUSYSTATUS`
+    /// semantics) into a vendor bundle so the two stop overlapping.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transp: Option<Transp>,
     pub busystatus: BusyStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub class: Option<EventClass>,

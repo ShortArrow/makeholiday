@@ -3,6 +3,15 @@ use crate::raw::{RawComponent, RawProperty};
 use crate::vcalendar::VCalendar;
 
 pub fn format_vevent(event: &VEvent) -> String {
+    // TRANSP precedence: prefer the typed `transp` field if set;
+    // otherwise fall back to the value derived from `busystatus` for
+    // round-trip compatibility (ADR-001 Migration Step 3 transitional
+    // behavior — busystatus moves into a Microsoft vendor bundle in
+    // Step 4 at which point this fallback goes away).
+    let transp_value = event
+        .transp
+        .map(|t| t.ics_value())
+        .unwrap_or_else(|| event.busystatus.transp());
     let mut lines = vec![
         "BEGIN:VEVENT".to_string(),
         format!("UID:{}", event.uid),
@@ -10,7 +19,7 @@ pub fn format_vevent(event: &VEvent) -> String {
         format!("DTSTART;VALUE=DATE:{}", event.dtstart.format("%Y%m%d")),
         format!("DTEND;VALUE=DATE:{}", event.dtend.format("%Y%m%d")),
         format!("SUMMARY:{}", event.summary),
-        format!("TRANSP:{}", event.busystatus.transp()),
+        format!("TRANSP:{transp_value}"),
         format!(
             "X-MICROSOFT-CDO-BUSYSTATUS:{}",
             event.busystatus.cdo_value()

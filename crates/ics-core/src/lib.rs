@@ -15,7 +15,7 @@ pub mod vcalendar;
 
 pub use calendar::{format_calendar, format_vevent};
 pub use error::{Error, Result};
-pub use event::{BusyStatus, EventClass, VEvent, format_event_line};
+pub use event::{BusyStatus, EventClass, Transp, VEvent, format_event_line};
 pub use parser::{parse_calendar, parse_indices};
 pub use query::{SortKey, remove_event_by_summary, remove_events_by_indices, sort_events};
 pub use raw::{RawComponent, RawProperty};
@@ -46,6 +46,7 @@ pub(crate) mod test_helpers {
             dtstart: NaiveDate::from_ymd_opt(start.0, start.1, start.2).unwrap(),
             dtend: NaiveDate::from_ymd_opt(end.0, end.1, end.2).unwrap(),
             summary: summary.to_string(),
+            transp: None,
             busystatus: BusyStatus::Free,
             class: None,
             categories: vec![],
