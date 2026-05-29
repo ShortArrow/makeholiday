@@ -7,6 +7,7 @@
 use ics_core::VCalendar;
 
 use crate::diagnostic::{Diagnostic, Severity};
+use crate::walker::RawVEventScan;
 
 pub mod rfc5545;
 
@@ -15,10 +16,14 @@ pub mod rfc5545;
 /// `calendar` is `None` when the tolerant parser could not promote the
 /// source to a typed `VCalendar`. Rules that depend on the typed view
 /// should bail in that case; rules that work over the raw source text
-/// continue to run.
+/// (via `vevent_scans`) continue to run.
 pub struct LintContext<'a> {
     pub source: &'a str,
     pub calendar: Option<&'a VCalendar>,
+    /// One scan per `VEVENT` block in source order — preserves duplicate
+    /// properties and missing required fields, which the typed parser
+    /// collapses or rejects.
+    pub vevent_scans: &'a [RawVEventScan],
 }
 
 /// Sink that rules push diagnostics into. Owns a `Vec<Diagnostic>` so the
@@ -61,5 +66,9 @@ pub trait Rule: Sync {
 
 /// The v0.2.0 fixed rule registry.
 pub fn all() -> Vec<&'static dyn Rule> {
-    vec![&rfc5545::RequiredUid]
+    vec![
+        &rfc5545::RequiredUid,
+        &rfc5545::RequiredDtstamp,
+        &rfc5545::DuplicateSummary,
+    ]
 }

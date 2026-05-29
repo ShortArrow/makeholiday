@@ -9,10 +9,12 @@
 
 pub mod diagnostic;
 pub mod rules;
+pub mod walker;
 
 pub use diagnostic::{Diagnostic, Severity, exit_code_for};
 
 use rules::{DiagnosticSink, LintContext};
+use walker::walk_vevents;
 
 /// Run the lint pass over `source` and return all diagnostics produced.
 ///
@@ -37,9 +39,11 @@ pub fn lint(source: &str) -> Vec<Diagnostic> {
         }
     };
 
+    let vevent_scans = walk_vevents(source);
     let ctx = LintContext {
         source,
         calendar: calendar.as_ref(),
+        vevent_scans: &vevent_scans,
     };
     let mut sink = DiagnosticSink::from_vec(diagnostics);
     for rule in rules::all() {

@@ -18,8 +18,13 @@
 
 use crate::raw::RawProperty;
 
+/// Tokenized property line.
+///
+/// Pub-promoted from `pub(crate)` to support out-of-tree consumers like
+/// `icslint` that need to walk the source at the logical-line level
+/// without committing to the typed `VCalendar` view.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct LogicalLine<'a> {
+pub struct LogicalLine<'a> {
     /// Property name, UPPERCASE-normalized.
     pub name: String,
     /// `(KEY, value)` pairs. Keys UPPERCASE; values keep their original
@@ -51,7 +56,7 @@ impl<'a> LogicalLine<'a> {
 /// values that span semicolons. ADR-019 Step 1 brings property routing
 /// onto this primitive; a richer quoted-param parser arrives if/when a
 /// real-world file demands it.
-pub(crate) fn parse_logical_line(line: &str) -> Option<LogicalLine<'_>> {
+pub fn parse_logical_line(line: &str) -> Option<LogicalLine<'_>> {
     let colon = line.find(':')?;
     let prefix = &line[..colon];
     let value = &line[colon + 1..];
