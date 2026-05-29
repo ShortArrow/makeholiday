@@ -26,7 +26,7 @@ In priority order:
 
 ## 3. Non-Goals
 
-Things `makeholiday` will not do, full stop. CalDAV / cloud-service synchronization is *not* on this list — it is staged for v0.2.0 per [§9 Roadmap](#9-roadmap).
+Things `makeholiday` will not do, full stop. CalDAV / cloud-service synchronization is *not* on this list — it is staged for v0.3.0 per [§9 Roadmap](#9-roadmap).
 
 - **GUI / WebUI.** No desktop application, no web interface. (A TUI is planned as a sibling binary — see [ADR-022](design/022-tui-front-end-policy.md).)
 - **Non-ICS calendar formats.** Microsoft `.msg`, legacy vCalendar 1.0, proprietary binary calendar formats are out of scope.
@@ -88,7 +88,7 @@ Items are listed in approximate priority. Acceptance criteria to be expanded as 
 
 Distinct from Non-Goals: these are explicitly *not* committed for any planned release, though some may move into scope later.
 
-- Cloud sync of calendar state between machines. → graduates into v0.2.0 scope alongside CalDAV; see [§9 Roadmap](#9-roadmap).
+- Cloud sync of calendar state between machines. → graduates into v0.3.0 scope alongside CalDAV; see [§9 Roadmap](#9-roadmap).
 - Calendar invitation workflows (iTIP, `REQUEST` / `REPLY` / `CANCEL` method handling).
 - Recurring event expansion to discrete instances (RRULE materialization). RRULE *preservation* on round-trip is in scope; expansion is not.
 - Time zone database bundling. We rely on the system tz database where time zones come into play.
@@ -113,9 +113,20 @@ The v0.1.x series scopes `makeholiday` as a high-fidelity local ICS file manager
 - CLI UX polish ([ADR-015](design/015-diagnostic-output.md) `--quiet` / `--interactive`, [ADR-020](design/020-cli-subcommand-policy.md) help-text examples).
 - v0.1.0 freezes the CLI surface contract for SemVer purposes ([ADR-004](design/004-trunk-based-and-semver.md)).
 
-### v0.2.0 — CalDAV / Cloud Backend (next)
+### v0.2.0 — ICS Ecosystem (next)
 
-The v0.2.0 series extends `makeholiday` into a multi-backend calendar client. The `ics-core` parser and typed model carry over unchanged because every CalDAV response is a syntactically valid `VCALENDAR` blob — the work concentrates on the I/O boundary, not the type model.
+The v0.2.0 series shifts the project from a single CLI to a small ecosystem of tools all consuming the same `ics-core` library. The library graduates from in-tree workspace member to a published crate with its own repository.
+
+- **`ics-core` extracted to its own repository** and published to crates.io. The version contract for `ics-core` begins here, derived from the v0.1.x experience inside this repo.
+- **`lazyics` — interactive TUI editor** for `.ics` files, inspired by `lazygit`. Naming convention: lazy-prefixed TUI tools. Whether `lazyics` ships as a separate binary or as a subcommand bundled with the `makeholiday` CLI is decided when the project formally starts (revises [ADR-022](design/022-tui-front-end-policy.md), originally drafted as `makeholiday-tui`).
+- **`icslint` — ICS lint tool** consuming `ics-core`. Surfaces vendor-prefix warnings ("this property is Microsoft-specific and will be ignored by Google clients") and RFC compliance hints. Initial rule set scoped at project start; structure follows the established Rust lint-tool conventions.
+- `makeholiday` itself continues evolving along the v0.1.x line — additive features like `search` / `filter`, `import` / `export`, calendar-level extensions land here too.
+
+The three-tool launch is the "ecosystem" theme. The release-train discipline of [ADR-024](design/024-solo-phase-branching-carve-out.md) reactivates the moment `ics-core` lands in its own repository (the carve-out's first trigger).
+
+### v0.3.0 — CalDAV / Cloud Backend
+
+The v0.3.0 series extends the ecosystem into a multi-backend story. The `ics-core` parser and typed model carry over unchanged because every CalDAV response is a syntactically valid `VCALENDAR` blob — the work concentrates on the I/O boundary, on event identity, and on time-of-day typing.
 
 - CalDAV client integration with a per-event `Repository` abstraction (`fetch_by_uid`, `put_event`, `delete_by_uid`) alongside the bulk file-level API.
 - ETag-based optimistic locking on event resources.
@@ -125,11 +136,11 @@ The v0.2.0 series extends `makeholiday` into a multi-backend calendar client. Th
 
 This unblocks the "Cloud sync of calendar state between machines" item currently in [§7 Out of Scope](#7-out-of-scope).
 
-### Beyond v0.2.0
+### Beyond v0.3.0
 
 Open. Candidates currently on the watch list:
 
 - VTODO full editing (currently planned as read-only via `list --include-todos`; see [ADR-021](design/021-vtodo-scope.md)).
-- TUI launch (scope settled in [ADR-022](design/022-tui-front-end-policy.md); launch trigger is maintainer judgment per [§8](#8-open-questions)).
 - Additional vendor profile typed fields beyond the current Microsoft `busystatus`.
 - RRULE materialization (recurring-event expansion), per `§7` still out of scope today.
+- Provider-specific cloud APIs (Google Calendar API, Microsoft Graph) layered on top of the CalDAV-shaped Repository abstraction.
