@@ -1,0 +1,65 @@
+//! Rule trait, registry, and lint context.
+//!
+//! A [`Rule`] is a stateless singleton that inspects a [`LintContext`] and
+//! pushes findings into a [`DiagnosticSink`]. The fixed v0.2.0 registry is
+//! returned by [`all`].
+
+use ics_core::VCalendar;
+
+use crate::diagnostic::{Diagnostic, Severity};
+
+pub mod rfc5545;
+
+/// Context shared by every rule for a single lint pass.
+///
+/// `calendar` is `None` when the tolerant parser could not promote the
+/// source to a typed `VCalendar`. Rules that depend on the typed view
+/// should bail in that case; rules that work over the raw source text
+/// continue to run.
+pub struct LintContext<'a> {
+    pub source: &'a str,
+    pub calendar: Option<&'a VCalendar>,
+}
+
+/// Sink that rules push diagnostics into. Owns a `Vec<Diagnostic>` so the
+/// caller can drop the sink and recover the collected findings.
+pub struct DiagnosticSink {
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl DiagnosticSink {
+    pub fn new() -> Self {
+        Self {
+            diagnostics: Vec::new(),
+        }
+    }
+
+    pub fn from_vec(diagnostics: Vec<Diagnostic>) -> Self {
+        Self { diagnostics }
+    }
+
+    pub fn push(&mut self, d: Diagnostic) {
+        self.diagnostics.push(d);
+    }
+
+    pub fn into_vec(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
+impl Default for DiagnosticSink {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait Rule: Sync {
+    fn id(&self) -> &'static str;
+    fn default_severity(&self) -> Severity;
+    fn visit(&self, ctx: &LintContext<'_>, sink: &mut DiagnosticSink);
+}
+
+/// The v0.2.0 fixed rule registry.
+pub fn all() -> Vec<&'static dyn Rule> {
+    vec![&rfc5545::RequiredUid]
+}
