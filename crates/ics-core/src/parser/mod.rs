@@ -1,3 +1,5 @@
+pub mod unfold;
+
 use crate::error::{Error, Result};
 use crate::event::{EventClass, Transp, VEvent};
 use crate::profile::microsoft::MsBusyStatus;
@@ -8,13 +10,15 @@ use chrono::{NaiveDate, NaiveDateTime};
 
 /// Parse the full ICS document into a typed `VCalendar`.
 ///
-/// Calendar-level non-`VEVENT` components (`VTIMEZONE`, `VJOURNAL`,
-/// etc.) are preserved into `VCalendar.unrecognized_components`.
+/// The input flows through `unfold::unfold` first, which strips a leading
+/// UTF-8 BOM and joins RFC 5545 folded continuation lines into logical
+/// lines. Calendar-level non-`VEVENT` components (`VTIMEZONE`,
+/// `VJOURNAL`, etc.) are preserved into `VCalendar.unrecognized_components`.
 /// Non-typed nested components inside a `VEVENT` (e.g. `VALARM`) flow
 /// into `VEvent.unrecognized_components`.
 pub fn parse_calendar(content: &str) -> Result<VCalendar> {
-    let normalized = content.replace("\r\n", "\n");
-    let lines: Vec<&str> = normalized.lines().map(str::trim).collect();
+    let logical = unfold::unfold(content);
+    let lines: Vec<&str> = logical.iter().map(|s| s.trim()).collect();
     let mut idx = 0;
 
     // Skip until BEGIN:VCALENDAR. Be lenient about leading whitespace /
@@ -838,6 +842,85 @@ mod tests {
         assert!(parsed.events[0].microsoft.is_none());
         assert!(parsed.events[0].google.is_none());
         assert!(parsed.events[0].icloud.is_none());
+    }
+
+    // ADR-019 Step 0 — folding + BOM acceptance at the parse_calendar boundary.
+
+    #[test]
+    fn parse_calendar_accepts_leading_utf8_bom() {
+        // Outlook etc. emit a UTF-8 BOM. parse_calendar must tolerate it.
+        let mut input =
+            String::from("\u{FEFF}BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:s\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        assert_eq!(parsed.version, "2.0");
+        assert_eq!(parsed.events.len(), 1);
+        assert_eq!(parsed.events[0].summary, "s");
+    }
+
+    #[test]
+    fn parse_calendar_reassembles_folded_summary() {
+        // A long SUMMARY split across multiple physical lines per RFC 5545 §3.1.
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:This is a very long event title that has been\r\n");
+        input.push_str(" folded across multiple physical lines per RFC 5545\r\n");
+        input.push_str(" section 3.1 line folding rules.\r\n");
+        input.push_str("END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        assert_eq!(
+            parsed.events[0].summary,
+            "This is a very long event title that has been\
+             folded across multiple physical lines per RFC 5545\
+             section 3.1 line folding rules."
+        );
+    }
+
+    #[test]
+    fn parse_calendar_handles_tab_continuation_too() {
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:long\r\n\tvalue\r\n");
+        input.push_str("END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        assert_eq!(parsed.events[0].summary, "longvalue");
+    }
+
+    #[test]
+    fn parse_calendar_accepts_lf_only_line_terminators() {
+        // Some tools emit Unix line endings. The unfolder accepts both.
+        let mut input = String::from("BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//mh//EN\n");
+        input.push_str("BEGIN:VEVENT\n");
+        input.push_str("UID:e1\nDTSTAMP:20260101T000000Z\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\nDTEND;VALUE=DATE:20260430\n");
+        input.push_str("SUMMARY:s\nEND:VEVENT\nEND:VCALENDAR\n");
+        let parsed = parse_calendar(&input).unwrap();
+        assert_eq!(parsed.events.len(), 1);
+        assert_eq!(parsed.events[0].summary, "s");
+    }
+
+    #[test]
+    fn parse_calendar_preserves_japanese_utf8_across_fold() {
+        // Multi-byte UTF-8 split across a fold boundary must reassemble
+        // correctly. The boundary lands between bytes, not between chars,
+        // but since the folding-marker whitespace is single-byte ASCII
+        // and we drop only that single byte, surrounding multi-byte
+        // sequences survive intact.
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:憲法\r\n 記念日\r\n");
+        input.push_str("END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        assert_eq!(parsed.events[0].summary, "憲法記念日");
     }
 
     #[test]

@@ -9,6 +9,7 @@
 ## [Unreleased]
 
 ### 変更
+- ics-core パーサを `crates/ics-core/src/parser/` モジュールディレクトリへ再編（ADR-019 Migration Step 0）。新規 `parser/unfold.rs` で UTF-8 BOM 剥がしと RFC 5545 §3.1 行折り返し展開（SPACE / HTAB で始まる継続行を直前の論理行に結合、折り返しマーカー空白は除去）を実装。`parse_calendar` がディスパッチ前に unfolder を通すようになり、Outlook / Google エクスポートが出す長い `SUMMARY` イベントや BOM 付き入力でパーサが壊れなくなる。既存のディスパッチロジックの挙動は不変、入力パイプラインに unfold パスが追加されただけ。出力側の行折り返し（ADR-018 §4）は後続ステップで導入予定。
 - `CalendarRepository::load()` の返却型を `Result<String>` から `Result<VCalendar>` に、`save()` の引数を `&str` から `&VCalendar` に変更（ADR-011 §load が示唆していた ADR-017 過渡的状態を解消）。`FileCalendarRepository` が内部で `ics_core::parse_calendar` / `format_calendar` を呼ぶようになり、ユースケース側は `parse_calendar` / `format_calendar` のブリッジ呼び出しを削除して typed `VCalendar` を直接操作。テストはワイヤフォーマット文字列を `contains` で検査するのではなく typed フィールド（`cal.events[0].summary`、`event.microsoft.busystatus`、`cal.prodid` 等）で検証する形に更新。
 - PRD §3 非ゴールから "サーバ / サービス同期" 行を削除。CalDAV / クラウドサービス同期は絶対 Non-Goal ではなく v0.2.0 でバージョンステージングされたスコープインに変更。§7 スコープ外の「マシン間でのカレンダー状態クラウド同期」も新規 §9 を参照するよう更新。§3 リストには ADR で裏付けされた絶対 Non-Goal（GUI/WebUI、ICS 以外形式、ベンダープロファイル変換）のみ残置。
 - [ADR-017](design/017-workspace-and-ics-core-crate.md) に従い、リポジトリを Cargo workspace へ再編。`Cargo.toml` は workspace マニフェストに、`makeholiday` バイナリクレートは `crates/makeholiday/` 配下へ移動。挙動変更なし。
