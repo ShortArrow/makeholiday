@@ -73,7 +73,7 @@ Items are listed in approximate priority. Acceptance criteria to be expanded as 
 - **RFC ↔ vendor extension boundary documentation.** A reference document, generated where possible from code, listing which properties live in RFC 5545 and which belong to which vendor profile. Boundary rules captured in [ADR-001](design/001-vendor-extension-typing.md).
 - **Reusable ICS handling library (`ics-core` crate).** The shared core lives in `crates/ics-core/` as an in-tree workspace member; external publication timing is settled by [ADR-017](design/017-workspace-and-ics-core-crate.md). Type shape per [ADR-001](design/001-vendor-extension-typing.md).
 - **Task management properties (`VTODO`).** Typed `VTodo` in `ics-core`; the makeholiday CLI exposes read-only display via `list --include-todos` (no editing subcommands). See [ADR-021](design/021-vtodo-scope.md).
-- **TUI front-end.** Planned as a separate workspace member (`crates/makeholiday-tui/`) consuming `ics-core`. No launch date; trigger is maintainer judgment. See [ADR-022](design/022-tui-front-end-policy.md).
+- **TUI front-end (`lazyics`).** Separate `lazyics` binary consuming `ics-core` and the `makeholiday` library's use cases, planned for v0.2.0. See [ADR-025](design/025-lazyics-project-definition.md). [ADR-022](design/022-tui-front-end-policy.md) is the predecessor (TUI policy, no launch date) and is superseded.
 
 ## 6. Non-Functional Requirements
 
@@ -95,7 +95,7 @@ Distinct from Non-Goals: these are explicitly *not* committed for any planned re
 
 ## 8. Open Questions
 
-- **TUI front-end launch trigger** — scope and architecture are settled in [ADR-022](design/022-tui-front-end-policy.md); the remaining open question is *when* maintainer judgment says to start.
+- *(Resolved 2026-05-29)* **TUI front-end launch trigger** — launching in the v0.2.0 ICS Ecosystem milestone under the `lazyics` brand; project definition in [ADR-025](design/025-lazyics-project-definition.md).
 - **License of preset icon names / descriptions** — the `PRESET_ICONS` table ships under the project license; revisit if we add SVG / image assets later.
 
 ## 9. Roadmap
@@ -117,9 +117,9 @@ The v0.1.x series scopes `makeholiday` as a high-fidelity local ICS file manager
 
 The v0.2.0 series shifts the project from a single CLI to a small ecosystem of tools all consuming the same `ics-core` library. The library graduates from in-tree workspace member to a published crate with its own repository.
 
-- **`ics-core` extracted to its own repository** and published to crates.io. The version contract for `ics-core` begins here, derived from the v0.1.x experience inside this repo.
-- **`lazyics` — interactive TUI editor** for `.ics` files, inspired by `lazygit`. Naming convention: lazy-prefixed TUI tools. Whether `lazyics` ships as a separate binary or as a subcommand bundled with the `makeholiday` CLI is decided when the project formally starts (revises [ADR-022](design/022-tui-front-end-policy.md), originally drafted as `makeholiday-tui`).
-- **`icslint` — ICS lint tool** consuming `ics-core`. Surfaces vendor-prefix warnings ("this property is Microsoft-specific and will be ignored by Google clients") and RFC compliance hints. Initial rule set scoped at project start; structure follows the established Rust lint-tool conventions.
+- **`ics-core` extracted to its own repository** and published to crates.io. The version contract for `ics-core` begins here, derived from the v0.1.x experience inside this repo. See [ADR-017](design/017-workspace-and-ics-core-crate.md) for the split trigger and lifecycle.
+- **`lazyics` — interactive TUI editor** for `.ics` files, inspired by `lazygit`. Naming convention: lazy-prefixed TUI tools. Ships as a **separate binary** (`cargo install lazyics`), built on `ratatui`, depending on the `makeholiday` library's use cases to mechanically prevent CLI/TUI divergence. See [ADR-025](design/025-lazyics-project-definition.md) (supersedes [ADR-022](design/022-tui-front-end-policy.md)).
+- **`icslint` — ICS lint tool** consuming `ics-core`. Surfaces vendor-prefix warnings ("this property is Microsoft-specific and will be ignored by Google clients") and RFC compliance hints. Four rule families ship at v0.2.0 — RFC 5545 cardinality/required, vendor hygiene, text encoding, structure. See [ADR-026](design/026-icslint-project-definition.md).
 - `makeholiday` itself continues evolving along the v0.1.x line — additive features like `search` / `filter`, `import` / `export`, calendar-level extensions land here too.
 
 The three-tool launch is the "ecosystem" theme. The release-train discipline of [ADR-024](design/024-solo-phase-branching-carve-out.md) reactivates the moment `ics-core` lands in its own repository (the carve-out's first trigger).

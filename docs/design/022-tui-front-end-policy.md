@@ -1,7 +1,15 @@
 # 022. TUI Front-end Policy
 
-- Status: **Accepted**
+- Status: **Superseded by [ADR-025](025-lazyics-project-definition.md)** (2026-05-29)
 - Date: 2026-05-28
+
+> **Note (2026-05-29)** — This ADR's "future plan, no launch date" stance has
+> been superseded. [PRD §9](../PRD.md#9-roadmap) now stages the TUI as a
+> v0.2.0 deliverable under the brand name **lazyics** (not `makeholiday-tui`),
+> and [ADR-025](025-lazyics-project-definition.md) records the project
+> definition — separate binary, ratatui, in-tree workspace member until the
+> v0.2.0 repo split. Read this ADR only for historical context; treat
+> ADR-025 as authoritative.
 
 ## Context
 
