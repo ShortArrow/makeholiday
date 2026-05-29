@@ -60,7 +60,7 @@ impl CalendarRepository for FileCalendarRepository {
         if self.path.exists() {
             return Err(MhError::already_exists(self.path.clone()));
         }
-        let content = ics::format_calendar(&[]);
+        let content = ics::format_calendar(&ics::VCalendar::new("-//makeholiday//EN"));
         self.atomic_write(&content, true)
     }
 

@@ -13,6 +13,25 @@
 
 use serde::Serialize;
 
+/// A component (`BEGIN:NAME ... END:NAME`) that the typed model does not
+/// understand, preserved verbatim for ADR-001 / ADR-018 round-trip.
+///
+/// Examples: `VTIMEZONE` at the calendar level, `VALARM` nested inside a
+/// `VEVENT`. Nested unknown components are stored recursively in
+/// `sub_components`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RawComponent {
+    /// Component name, UPPERCASE-normalized (e.g. `VTIMEZONE`, `VALARM`).
+    pub name: String,
+
+    /// All properties of this component as `RawProperty` instances.
+    pub properties: Vec<RawProperty>,
+
+    /// Nested unknown sub-components (e.g. `STANDARD` / `DAYLIGHT` inside
+    /// a `VTIMEZONE`).
+    pub sub_components: Vec<RawComponent>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RawProperty {
     /// Property name, normalized to UPPERCASE.

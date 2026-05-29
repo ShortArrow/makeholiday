@@ -1,4 +1,4 @@
-use crate::raw::RawProperty;
+use crate::raw::{RawComponent, RawProperty};
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::Serialize;
 
@@ -96,6 +96,11 @@ pub struct VEvent {
     /// per ADR-018 in `source_index` order at the tail of the component.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unknown: Vec<RawProperty>,
+
+    /// Nested components the typed model does not understand (e.g.
+    /// `VALARM`). Preserved verbatim for ADR-001 / ADR-018 round-trip.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unrecognized_components: Vec<RawComponent>,
 }
 
 fn serialize_date<S: serde::Serializer>(date: &NaiveDate, s: S) -> Result<S::Ok, S::Error> {

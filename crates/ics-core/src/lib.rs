@@ -11,15 +11,15 @@ pub mod event;
 pub mod parser;
 pub mod query;
 pub mod raw;
+pub mod vcalendar;
 
-pub use calendar::{
-    format_calendar, format_vevent, insert_event, vcalendar_footer, vcalendar_header,
-};
+pub use calendar::{format_calendar, format_vevent};
 pub use error::{Error, Result};
 pub use event::{BusyStatus, EventClass, VEvent, format_event_line};
-pub use parser::{parse_events, parse_indices};
+pub use parser::{parse_calendar, parse_indices};
 pub use query::{SortKey, remove_event_by_summary, remove_events_by_indices, sort_events};
-pub use raw::RawProperty;
+pub use raw::{RawComponent, RawProperty};
+pub use vcalendar::VCalendar;
 
 #[cfg(test)]
 pub(crate) mod test_helpers {
@@ -51,6 +51,7 @@ pub(crate) mod test_helpers {
             categories: vec![],
             icon: None,
             unknown: vec![],
+            unrecognized_components: vec![],
         }
     }
 }

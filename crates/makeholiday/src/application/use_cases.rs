@@ -99,6 +99,7 @@ pub fn add<R: CalendarRepository>(
     };
 
     let content = repo.load()?;
+    let mut cal = ics::parse_calendar(&content)?;
 
     let event = VEvent {
         uid: uuid::Uuid::new_v4().to_string(),
@@ -111,10 +112,11 @@ pub fn add<R: CalendarRepository>(
         categories,
         icon,
         unknown: vec![],
+        unrecognized_components: vec![],
     };
 
-    let new_content = ics::insert_event(&content, &event)?;
-    repo.save(&new_content)?;
+    cal.events.push(event.clone());
+    repo.save(&ics::format_calendar(&cal))?;
 
     let line = ics::format_event_line(&event);
     eprintln!("Added: {line}");
@@ -128,11 +130,11 @@ pub fn list<R: CalendarRepository>(
     json: bool,
 ) -> Result<String> {
     let content = repo.load()?;
-    let events = ics::parse_events(&content)?;
+    let cal = ics::parse_calendar(&content)?;
     let events = if sort_keys.is_empty() {
-        events
+        cal.events
     } else {
-        ics::sort_events(&events, sort_keys, descending)
+        ics::sort_events(&cal.events, sort_keys, descending)
     };
     if json {
         serde_json::to_string_pretty(&events)
@@ -154,9 +156,10 @@ pub fn remove<R: CalendarRepository>(
     target: Option<&str>,
 ) -> Result<()> {
     let content = repo.load()?;
-    let events = ics::parse_events(&content)?;
+    let cal = ics::parse_calendar(&content)?;
+    let events = &cal.events;
 
-    let (new_content, removed_desc) = match (summary, target) {
+    let (new_cal, removed_desc) = match (summary, target) {
         (Some(_), Some(_)) => {
             return Err(MhError::Conflict(
                 "Cannot specify both --summary and index target".to_string(),
@@ -174,7 +177,7 @@ pub fn remove<R: CalendarRepository>(
                 .map(|e| ics::format_event_line(e))
                 .collect::<Vec<_>>()
                 .join(", ");
-            (ics::remove_event_by_summary(&content, s)?, desc)
+            (ics::remove_event_by_summary(&cal, s)?, desc)
         }
         (None, Some(spec)) => {
             let indices = ics::parse_indices(spec, events.len())?;
@@ -183,7 +186,7 @@ pub fn remove<R: CalendarRepository>(
                 .map(|&i| ics::format_event_line(&events[i - 1]))
                 .collect::<Vec<_>>()
                 .join(", ");
-            (ics::remove_events_by_indices(&content, &indices)?, desc)
+            (ics::remove_events_by_indices(&cal, &indices)?, desc)
         }
         (None, None) => {
             if events.is_empty() {
@@ -208,11 +211,11 @@ pub fn remove<R: CalendarRepository>(
                 .map(|&i| ics::format_event_line(&events[i - 1]))
                 .collect::<Vec<_>>()
                 .join(", ");
-            (ics::remove_events_by_indices(&content, &indices)?, desc)
+            (ics::remove_events_by_indices(&cal, &indices)?, desc)
         }
     };
 
-    repo.save(&new_content)?;
+    repo.save(&ics::format_calendar(&new_cal))?;
     eprintln!("Removed: {removed_desc}");
     Ok(())
 }
@@ -233,7 +236,8 @@ mod tests {
         let repo = temp_repo(&dir, "test.ics");
         init(&repo).unwrap();
         let content = repo.load().unwrap();
-        assert_eq!(content, ics::format_calendar(&[]));
+        let expected = ics::format_calendar(&ics::VCalendar::new("-//makeholiday//EN"));
+        assert_eq!(content, expected);
     }
 
     #[test]
@@ -302,9 +306,9 @@ mod tests {
             NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(),
         );
         let content = repo.load().unwrap();
-        let events = ics::parse_events(&content).unwrap();
-        assert_eq!(events.len(), 2);
-        assert_ne!(events[0].uid, events[1].uid);
+        let cal = ics::parse_calendar(&content).unwrap();
+        assert_eq!(cal.events.len(), 2);
+        assert_ne!(cal.events[0].uid, cal.events[1].uid);
     }
 
     #[test]

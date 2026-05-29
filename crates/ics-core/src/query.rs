@@ -1,7 +1,6 @@
-use crate::calendar::format_calendar;
 use crate::error::{Error, Result};
 use crate::event::VEvent;
-use crate::parser::parse_events;
+use crate::vcalendar::VCalendar;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SortKey {
@@ -27,42 +26,63 @@ pub fn sort_events(events: &[VEvent], keys: &[SortKey], descending: bool) -> Vec
     sorted
 }
 
-pub fn remove_event_by_summary(content: &str, summary: &str) -> Result<String> {
-    let events = parse_events(content)?;
-    let remaining: Vec<_> = events.iter().filter(|e| e.summary != summary).collect();
-    if remaining.len() == events.len() {
+/// Drop events whose `summary` matches the given string. Returns a new
+/// `VCalendar` with the same calendar-level fields and any unrecognized
+/// components preserved. Fails with a `Parse` error if no matching event
+/// is found.
+pub fn remove_event_by_summary(cal: &VCalendar, summary: &str) -> Result<VCalendar> {
+    let remaining: Vec<VEvent> = cal
+        .events
+        .iter()
+        .filter(|e| e.summary != summary)
+        .cloned()
+        .collect();
+    if remaining.len() == cal.events.len() {
         return Err(Error::parse(format!(
             "No event found with summary: {summary}"
         )));
     }
-    Ok(format_calendar(
-        &remaining.into_iter().cloned().collect::<Vec<_>>(),
-    ))
+    Ok(VCalendar {
+        events: remaining,
+        ..cal.clone()
+    })
 }
 
-pub fn remove_events_by_indices(content: &str, indices: &[usize]) -> Result<String> {
-    let events = parse_events(content)?;
+/// Drop events whose 1-based index appears in `indices`. Returns a new
+/// `VCalendar`.
+pub fn remove_events_by_indices(cal: &VCalendar, indices: &[usize]) -> Result<VCalendar> {
     for &idx in indices {
-        if idx == 0 || idx > events.len() {
+        if idx == 0 || idx > cal.events.len() {
             return Err(Error::parse(format!(
                 "Index {idx} out of range (1-{})",
-                events.len()
+                cal.events.len()
             )));
         }
     }
-    let remaining: Vec<_> = events
+    let remaining: Vec<VEvent> = cal
+        .events
         .iter()
         .enumerate()
         .filter(|(i, _)| !indices.contains(&(i + 1)))
         .map(|(_, e)| e.clone())
         .collect();
-    Ok(format_calendar(&remaining))
+    Ok(VCalendar {
+        events: remaining,
+        ..cal.clone()
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_helpers::make_event;
+
+    fn vcal(events: Vec<VEvent>) -> VCalendar {
+        VCalendar {
+            events,
+            ..VCalendar::new("-//makeholiday//EN")
+        }
+    }
 
     fn unsorted_events() -> Vec<VEvent> {
         vec![
@@ -121,36 +141,32 @@ mod tests {
 
     #[test]
     fn remove_by_summary() {
-        let events = vec![
+        let cal = vcal(vec![
             make_event("a", (2026, 1, 1), (2026, 1, 2), "元日"),
             make_event("b", (2026, 2, 11), (2026, 2, 12), "建国記念の日"),
-        ];
-        let cal = format_calendar(&events);
-        let result = remove_event_by_summary(&cal, "元日").unwrap();
-        let parsed = parse_events(&result).unwrap();
-        assert_eq!(parsed.len(), 1);
-        assert_eq!(parsed[0].summary, "建国記念の日");
+        ]);
+        let updated = remove_event_by_summary(&cal, "元日").unwrap();
+        assert_eq!(updated.events.len(), 1);
+        assert_eq!(updated.events[0].summary, "建国記念の日");
     }
 
     #[test]
     fn remove_by_summary_not_found() {
-        let cal = format_calendar(&[make_event("a", (2026, 1, 1), (2026, 1, 2), "元日")]);
+        let cal = vcal(vec![make_event("a", (2026, 1, 1), (2026, 1, 2), "元日")]);
         let result = remove_event_by_summary(&cal, "存在しない");
         assert!(result.is_err());
     }
 
     #[test]
     fn remove_multiple_by_indices() {
-        let events = vec![
+        let cal = vcal(vec![
             make_event("a", (2026, 1, 1), (2026, 1, 2), "A"),
             make_event("b", (2026, 2, 1), (2026, 2, 2), "B"),
             make_event("c", (2026, 3, 1), (2026, 3, 2), "C"),
             make_event("d", (2026, 4, 1), (2026, 4, 2), "D"),
-        ];
-        let cal = format_calendar(&events);
-        let result = remove_events_by_indices(&cal, &[2, 4]).unwrap();
-        let parsed = parse_events(&result).unwrap();
-        let summaries: Vec<_> = parsed.iter().map(|e| e.summary.as_str()).collect();
+        ]);
+        let updated = remove_events_by_indices(&cal, &[2, 4]).unwrap();
+        let summaries: Vec<_> = updated.events.iter().map(|e| e.summary.as_str()).collect();
         assert_eq!(summaries, vec!["A", "C"]);
     }
 }

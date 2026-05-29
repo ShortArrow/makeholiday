@@ -1,14 +1,6 @@
-use crate::error::{Error, Result};
 use crate::event::VEvent;
-use crate::raw::RawProperty;
-
-pub fn vcalendar_header() -> String {
-    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//makeholiday//EN\r\n".to_string()
-}
-
-pub fn vcalendar_footer() -> String {
-    "END:VCALENDAR\r\n".to_string()
-}
+use crate::raw::{RawComponent, RawProperty};
+use crate::vcalendar::VCalendar;
 
 pub fn format_vevent(event: &VEvent) -> String {
     let mut lines = vec![
@@ -40,18 +32,43 @@ pub fn format_vevent(event: &VEvent) -> String {
     for p in unknown_sorted {
         lines.push(format_raw_property(p));
     }
+    // Nested unrecognized components (VALARM, ...) preserved verbatim.
+    for comp in &event.unrecognized_components {
+        format_raw_component(comp, &mut lines);
+    }
     lines.push("END:VEVENT".to_string());
     let mut out = lines.join("\r\n");
     out.push_str("\r\n");
     out
 }
 
-pub fn format_calendar(events: &[VEvent]) -> String {
-    let mut out = vcalendar_header();
-    for event in events {
+pub fn format_calendar(cal: &VCalendar) -> String {
+    let mut lines = vec![
+        "BEGIN:VCALENDAR".to_string(),
+        format!("VERSION:{}", cal.version),
+        format!("PRODID:{}", cal.prodid),
+    ];
+    if let Some(v) = &cal.calscale {
+        lines.push(format!("CALSCALE:{v}"));
+    }
+    if let Some(v) = &cal.method {
+        lines.push(format!("METHOD:{v}"));
+    }
+    let mut out = lines.join("\r\n");
+    out.push_str("\r\n");
+    for event in &cal.events {
         out.push_str(&format_vevent(event));
     }
-    out.push_str(&vcalendar_footer());
+    // Calendar-level unrecognized components (VTIMEZONE, ...) preserved.
+    let mut comp_lines: Vec<String> = Vec::new();
+    for comp in &cal.unrecognized_components {
+        format_raw_component(comp, &mut comp_lines);
+    }
+    if !comp_lines.is_empty() {
+        out.push_str(&comp_lines.join("\r\n"));
+        out.push_str("\r\n");
+    }
+    out.push_str("END:VCALENDAR\r\n");
     out
 }
 
@@ -69,36 +86,46 @@ fn format_raw_property(p: &RawProperty) -> String {
     out
 }
 
-pub fn insert_event(content: &str, event: &VEvent) -> Result<String> {
-    let footer = "END:VCALENDAR";
-    let pos = content
-        .find(footer)
-        .ok_or_else(|| Error::parse("Invalid ICS: missing END:VCALENDAR"))?;
-    let mut result = content[..pos].to_string();
-    result.push_str(&format_vevent(event));
-    result.push_str(&content[pos..]);
-    Ok(result)
+/// Append a `RawComponent` (and its sub-components recursively) into
+/// `lines` as `BEGIN:NAME ... END:NAME` block content.
+fn format_raw_component(comp: &RawComponent, lines: &mut Vec<String>) {
+    lines.push(format!("BEGIN:{}", comp.name));
+    for p in &comp.properties {
+        lines.push(format_raw_property(p));
+    }
+    for sub in &comp.sub_components {
+        format_raw_component(sub, lines);
+    }
+    lines.push(format!("END:{}", comp.name));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::event::{BusyStatus, EventClass};
-    use crate::parser::parse_events;
+    use crate::parser::parse_calendar;
     use crate::test_helpers::make_event;
+
+    fn vcal(events: Vec<VEvent>) -> VCalendar {
+        VCalendar {
+            events,
+            ..VCalendar::new("-//makeholiday//EN")
+        }
+    }
 
     #[test]
     fn header_contains_crlf_and_required_fields() {
-        let h = vcalendar_header();
-        assert!(h.contains("\r\n"), "must use CRLF");
-        assert!(h.contains("BEGIN:VCALENDAR"));
-        assert!(h.contains("VERSION:2.0"));
-        assert!(h.contains("PRODID:"));
+        let s = format_calendar(&vcal(vec![]));
+        assert!(s.contains("\r\n"), "must use CRLF");
+        assert!(s.starts_with("BEGIN:VCALENDAR"));
+        assert!(s.contains("VERSION:2.0"));
+        assert!(s.contains("PRODID:"));
     }
 
     #[test]
     fn footer_is_end_vcalendar_crlf() {
-        assert_eq!(vcalendar_footer(), "END:VCALENDAR\r\n");
+        let s = format_calendar(&vcal(vec![]));
+        assert!(s.ends_with("END:VCALENDAR\r\n"));
     }
 
     #[test]
@@ -114,7 +141,6 @@ mod tests {
         assert!(output.contains("X-MICROSOFT-CDO-BUSYSTATUS:FREE\r\n"));
         assert!(output.contains("UID:test-uid-1\r\n"));
         assert!(output.contains("END:VEVENT\r\n"));
-        // Default: no CLASS output
         assert!(!output.contains("CLASS:"));
     }
 
@@ -146,10 +172,10 @@ mod tests {
         assert!(output.contains("CATEGORIES:仕事,出張\r\n"));
         assert!(output.contains("X-MAKEHOLIDAY-ICON:airplane\r\n"));
 
-        let cal = format_calendar(&[event.clone()]);
-        let parsed = parse_events(&cal).unwrap();
-        assert_eq!(parsed[0].categories, vec!["仕事", "出張"]);
-        assert_eq!(parsed[0].icon, Some("airplane".to_string()));
+        let cal = format_calendar(&vcal(vec![event.clone()]));
+        let parsed = parse_calendar(&cal).unwrap();
+        assert_eq!(parsed.events[0].categories, vec!["仕事", "出張"]);
+        assert_eq!(parsed.events[0].icon, Some("airplane".to_string()));
     }
 
     #[test]
@@ -162,7 +188,7 @@ mod tests {
 
     #[test]
     fn format_calendar_empty() {
-        let cal = format_calendar(&[]);
+        let cal = format_calendar(&vcal(vec![]));
         assert!(cal.starts_with("BEGIN:VCALENDAR\r\n"));
         assert!(cal.ends_with("END:VCALENDAR\r\n"));
         assert!(!cal.contains("BEGIN:VEVENT"));
@@ -174,21 +200,27 @@ mod tests {
             make_event("a", (2026, 1, 1), (2026, 1, 2), "元日"),
             make_event("b", (2026, 2, 11), (2026, 2, 12), "建国記念の日"),
         ];
-        let cal = format_calendar(&events);
+        let cal = format_calendar(&vcal(events));
         assert_eq!(cal.matches("BEGIN:VEVENT").count(), 2);
         assert!(cal.contains("SUMMARY:元日"));
         assert!(cal.contains("SUMMARY:建国記念の日"));
     }
 
     #[test]
-    fn insert_event_adds_vevent_before_footer() {
-        let cal = format_calendar(&[]);
-        let event = make_event("ins-1", (2026, 3, 20), (2026, 3, 21), "春分の日");
-        let result = insert_event(&cal, &event).unwrap();
-        assert!(result.contains("SUMMARY:春分の日"));
-        assert!(result.ends_with("END:VCALENDAR\r\n"));
-        let parsed = parse_events(&result).unwrap();
-        assert_eq!(parsed.len(), 1);
-        assert_eq!(parsed[0].summary, "春分の日");
+    fn vcalendar_round_trip_preserves_calendar_fields() {
+        let cal = VCalendar {
+            version: "2.0".to_string(),
+            prodid: "-//mh-test//EN".to_string(),
+            calscale: Some("GREGORIAN".to_string()),
+            method: Some("PUBLISH".to_string()),
+            events: vec![],
+            unrecognized_components: vec![],
+        };
+        let s = format_calendar(&cal);
+        let parsed = parse_calendar(&s).unwrap();
+        assert_eq!(parsed.version, "2.0");
+        assert_eq!(parsed.prodid, "-//mh-test//EN");
+        assert_eq!(parsed.calscale.as_deref(), Some("GREGORIAN"));
+        assert_eq!(parsed.method.as_deref(), Some("PUBLISH"));
     }
 }
