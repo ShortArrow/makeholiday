@@ -103,7 +103,11 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
     let mut class: Option<EventClass> = None;
     let mut categories: Vec<String> = Vec::new();
     let mut unknown: Vec<RawProperty> = Vec::new();
-    let mut unknown_index: u32 = 0;
+    let mut ms_unrecognized: Vec<RawProperty> = Vec::new();
+    // Monotonic across all X-* properties in this VEVENT regardless of
+    // which bucket they land in — preserves source-arrival order for the
+    // per-bucket sort the formatter does (ADR-018).
+    let mut x_index: u32 = 0;
     let mut unrecognized_components: Vec<RawComponent> = Vec::new();
 
     let mut idx = start;
@@ -123,9 +127,14 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
                     transp,
                     class,
                     categories,
-                    microsoft: ms_busystatus.map(|b| microsoft::EventExtensions {
-                        busystatus: Some(b),
-                    }),
+                    microsoft: if ms_busystatus.is_some() || !ms_unrecognized.is_empty() {
+                        Some(microsoft::EventExtensions {
+                            busystatus: ms_busystatus,
+                            unrecognized: ms_unrecognized,
+                        })
+                    } else {
+                        None
+                    },
                     unknown,
                     unrecognized_components,
                 },
@@ -168,9 +177,13 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
         } else if let Some(val) = line.strip_prefix("CATEGORIES:") {
             categories = val.split(',').map(|s| s.trim().to_string()).collect();
         } else if line.starts_with("X-") {
-            if let Some(prop) = parse_raw_property(line, unknown_index + 1) {
-                unknown.push(prop);
-                unknown_index += 1;
+            x_index += 1;
+            if let Some(prop) = parse_raw_property(line, x_index) {
+                if microsoft::owns_property(&prop.name) {
+                    ms_unrecognized.push(prop);
+                } else {
+                    unknown.push(prop);
+                }
             }
         }
         idx += 1;
@@ -320,6 +333,7 @@ mod tests {
         let mut event = make_event("rt-bs", (2026, 5, 1), (2026, 5, 2), "出張");
         event.microsoft = Some(MsExtensions {
             busystatus: Some(MsBusyStatus::WorkingElsewhere),
+            unrecognized: vec![],
         });
         event.class = Some(EventClass::Confidential);
         let cal = format_calendar(&vcal(vec![event.clone()]));
@@ -457,6 +471,7 @@ mod tests {
         let mut event = make_event("rt-typed", (2026, 4, 29), (2026, 4, 30), "昭和の日");
         event.microsoft = Some(MsExtensions {
             busystatus: Some(MsBusyStatus::Oof),
+            unrecognized: vec![],
         });
         event.unknown.push(RawProperty {
             name: "X-MAKEHOLIDAY-ICON".to_string(),
@@ -585,7 +600,8 @@ mod tests {
         // when microsoft.busystatus would derive a different value.
         let mut event = make_event("transp-override", (2026, 4, 29), (2026, 4, 30), "s");
         event.microsoft = Some(MsExtensions {
-            busystatus: Some(MsBusyStatus::Oof), // derives OPAQUE
+            busystatus: Some(MsBusyStatus::Oof),
+            unrecognized: vec![], // derives OPAQUE
         });
         event.transp = Some(crate::Transp::Transparent); // typed override
         let cal = format_calendar(&vcal(vec![event]));
@@ -597,7 +613,8 @@ mod tests {
     fn transp_none_falls_back_to_microsoft_busystatus_derived_value() {
         let mut event = make_event("transp-fallback", (2026, 4, 29), (2026, 4, 30), "s");
         event.microsoft = Some(MsExtensions {
-            busystatus: Some(MsBusyStatus::Oof), // derives OPAQUE
+            busystatus: Some(MsBusyStatus::Oof),
+            unrecognized: vec![], // derives OPAQUE
         });
         event.transp = None;
         let cal = format_calendar(&vcal(vec![event]));
@@ -619,6 +636,111 @@ mod tests {
         let cal = format_calendar(&vcal(vec![event.clone()]));
         let parsed = parse_calendar(&cal).unwrap();
         assert_eq!(parsed.events[0].transp, Some(crate::Transp::Opaque));
+    }
+
+    // ADR-001 Migration Step 6 — per-vendor unrecognized fallback.
+
+    #[test]
+    fn x_microsoft_prefix_routes_to_microsoft_unrecognized_not_unknown() {
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:s\r\n");
+        input.push_str("X-MICROSOFT-CDO-ALLDAYEVENT:TRUE\r\n");
+        input.push_str("X-MICROSOFT-IMPORTANCE:1\r\n");
+        input.push_str("X-CUSTOM-COLOR:blue\r\n");
+        input.push_str("END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        let event = &parsed.events[0];
+
+        // Microsoft prefix properties land in microsoft.unrecognized.
+        let ms = event.microsoft.as_ref().unwrap();
+        assert_eq!(ms.busystatus, None); // typed slot still empty
+        assert_eq!(ms.unrecognized.len(), 2);
+        let ms_names: Vec<_> = ms.unrecognized.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(
+            ms_names,
+            vec!["X-MICROSOFT-CDO-ALLDAYEVENT", "X-MICROSOFT-IMPORTANCE"]
+        );
+
+        // Non-Microsoft X-* stays in VEvent.unknown.
+        assert_eq!(event.unknown.len(), 1);
+        assert_eq!(event.unknown[0].name, "X-CUSTOM-COLOR");
+    }
+
+    #[test]
+    fn x_microsoft_cdo_busystatus_still_promotes_to_typed_field_not_unrecognized() {
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:s\r\n");
+        input.push_str("X-MICROSOFT-CDO-BUSYSTATUS:OOF\r\n");
+        input.push_str("END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        let ms = parsed.events[0].microsoft.as_ref().unwrap();
+        assert_eq!(ms.busystatus, Some(MsBusyStatus::Oof));
+        assert!(ms.unrecognized.is_empty());
+    }
+
+    #[test]
+    fn microsoft_unrecognized_round_trips_through_format() {
+        let mut event = make_event("rt-ms-unrec", (2026, 4, 29), (2026, 4, 30), "s");
+        event.microsoft = Some(MsExtensions {
+            busystatus: None,
+            unrecognized: vec![RawProperty {
+                name: "X-MICROSOFT-CDO-ALLDAYEVENT".to_string(),
+                params: vec![],
+                value: "TRUE".to_string(),
+                source_index: 1,
+            }],
+        });
+        let cal = format_calendar(&vcal(vec![event.clone()]));
+        assert!(cal.contains("X-MICROSOFT-CDO-ALLDAYEVENT:TRUE\r\n"));
+        let parsed = parse_calendar(&cal).unwrap();
+        let ms = parsed.events[0].microsoft.as_ref().unwrap();
+        assert_eq!(ms.unrecognized.len(), 1);
+        assert_eq!(ms.unrecognized[0].name, "X-MICROSOFT-CDO-ALLDAYEVENT");
+        assert_eq!(ms.unrecognized[0].value, "TRUE");
+    }
+
+    #[test]
+    fn source_index_is_monotonic_across_buckets() {
+        // Input order A, MS, B should yield X-CUSTOM-A at index 1,
+        // X-MICROSOFT-FOO at index 2, X-CUSTOM-B at index 3.
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:s\r\n");
+        input.push_str("X-CUSTOM-A:1\r\n");
+        input.push_str("X-MICROSOFT-FOO:2\r\n");
+        input.push_str("X-CUSTOM-B:3\r\n");
+        input.push_str("END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        let event = &parsed.events[0];
+        assert_eq!(event.unknown[0].name, "X-CUSTOM-A");
+        assert_eq!(event.unknown[0].source_index, 1);
+        assert_eq!(event.unknown[1].name, "X-CUSTOM-B");
+        assert_eq!(event.unknown[1].source_index, 3);
+        let ms = event.microsoft.as_ref().unwrap();
+        assert_eq!(ms.unrecognized[0].name, "X-MICROSOFT-FOO");
+        assert_eq!(ms.unrecognized[0].source_index, 2);
+    }
+
+    #[test]
+    fn empty_microsoft_bundle_stays_none() {
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:s\r\n");
+        input.push_str("X-CUSTOM-A:1\r\n");
+        input.push_str("END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        // No X-MICROSOFT-* input means microsoft bundle is None entirely.
+        assert!(parsed.events[0].microsoft.is_none());
     }
 
     #[test]

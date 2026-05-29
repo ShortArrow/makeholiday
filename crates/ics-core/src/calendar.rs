@@ -25,6 +25,16 @@ pub fn format_vevent(event: &VEvent) -> String {
     if let Some(bs) = ms_busystatus {
         lines.push(format!("X-MICROSOFT-CDO-BUSYSTATUS:{}", bs.cdo_value()));
     }
+    // Microsoft vendor-bundle untyped properties, sorted by source_index.
+    // Emitted right after the typed Microsoft fields per ADR-018 §3
+    // ("vendor bundle fields emit after RFC, in module declaration order").
+    if let Some(ms) = &event.microsoft {
+        let mut ms_unrecognized_sorted: Vec<&RawProperty> = ms.unrecognized.iter().collect();
+        ms_unrecognized_sorted.sort_by_key(|p| p.source_index);
+        for p in ms_unrecognized_sorted {
+            lines.push(format_raw_property(p));
+        }
+    }
     if let Some(class) = event.class {
         lines.push(format!("CLASS:{}", class.ics_value()));
     }
@@ -140,6 +150,7 @@ mod tests {
         let mut event = make_event("test-uid-1", (2026, 1, 1), (2026, 1, 2), "元日");
         event.microsoft = Some(MsExtensions {
             busystatus: Some(MsBusyStatus::Free),
+            unrecognized: vec![],
         });
         let output = format_vevent(&event);
         assert!(output.contains("BEGIN:VEVENT\r\n"));
@@ -167,6 +178,7 @@ mod tests {
         let mut event = make_event("oof-1", (2026, 8, 1), (2026, 8, 2), "不在");
         event.microsoft = Some(MsExtensions {
             busystatus: Some(MsBusyStatus::Oof),
+            unrecognized: vec![],
         });
         event.class = Some(EventClass::Private);
         let output = format_vevent(&event);

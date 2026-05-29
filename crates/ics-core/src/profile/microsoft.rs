@@ -6,9 +6,16 @@
 
 use serde::Serialize;
 
+use crate::raw::RawProperty;
+
 /// Property name prefixes owned by this profile. Longest match wins per
-/// ADR-001 rule 3. Step 6 wires this into the parser's prefix routing.
+/// ADR-001 rule 3.
 pub const PREFIXES: &[&str] = &["X-MICROSOFT-CDO-", "X-MICROSOFT-"];
+
+/// True if `name` starts with any of this profile's registered prefixes.
+pub fn owns_property(name: &str) -> bool {
+    PREFIXES.iter().any(|p| name.starts_with(p))
+}
 
 /// Microsoft's `X-MICROSOFT-CDO-BUSYSTATUS` value space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -56,10 +63,13 @@ impl MsBusyStatus {
 
 /// Microsoft event-level extension bundle (ADR-001 Option B).
 ///
-/// Step 6 will add an `unrecognized: Vec<RawProperty>` here for prefix-
-/// matched-but-not-yet-typed `X-MICROSOFT-*` properties.
+/// `unrecognized` holds `X-MICROSOFT-*` properties whose specific name is
+/// not yet typed. Promoting one of them into a typed field (in a future
+/// step) is intra-bundle and never changes the `VEvent.unknown` slot.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct EventExtensions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub busystatus: Option<MsBusyStatus>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unrecognized: Vec<RawProperty>,
 }

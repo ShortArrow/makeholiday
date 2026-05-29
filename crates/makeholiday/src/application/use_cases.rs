@@ -114,6 +114,7 @@ pub fn add<R: CalendarRepository>(
         categories,
         microsoft: Some(ics::microsoft::EventExtensions {
             busystatus: Some(busystatus),
+            unrecognized: vec![],
         }),
         unknown: vec![],
         unrecognized_components: vec![],
