@@ -9,6 +9,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ## [Unreleased]
 
 ### Changed
+- `CalendarRepository::load()` now returns `Result<VCalendar>` instead of `Result<String>`, and `CalendarRepository::save()` takes `&VCalendar` instead of `&str` (closes the ADR-017 transitional state noted in ADR-011 §load). `FileCalendarRepository` parses and formats internally via `ics_core::parse_calendar` / `format_calendar`; use cases drop their `parse_calendar` / `format_calendar` bridge calls and operate on the typed `VCalendar` directly. Tests check typed fields (`cal.events[0].summary`, `event.microsoft.busystatus`, `cal.prodid`) instead of inspecting wire-format strings.
 - PRD §3 Non-Goals drops the "Server / service synchronization" line; CalDAV / cloud-service sync is now version-staged for v0.2.0 rather than an absolute non-goal. PRD §7 Out of Scope's "Cloud sync of calendar state between machines" item now references the new §9. The §3 list keeps only the absolute non-goals backed by ADRs (GUI/WebUI, Non-ICS formats, vendor profile conversion).
 - Repository restructured into a Cargo workspace per [ADR-017](docs/design/017-workspace-and-ics-core-crate.md). `Cargo.toml` is now the workspace manifest; the `makeholiday` binary crate lives under `crates/makeholiday/`. No behavior change.
 - Added empty `crates/ics-core/` workspace member (Step 2 of ADR-017 Migration). Wired as a path dependency from `makeholiday`. No public surface yet; types and parser move in Step 3.

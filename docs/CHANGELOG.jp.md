@@ -9,6 +9,7 @@
 ## [Unreleased]
 
 ### 変更
+- `CalendarRepository::load()` の返却型を `Result<String>` から `Result<VCalendar>` に、`save()` の引数を `&str` から `&VCalendar` に変更（ADR-011 §load が示唆していた ADR-017 過渡的状態を解消）。`FileCalendarRepository` が内部で `ics_core::parse_calendar` / `format_calendar` を呼ぶようになり、ユースケース側は `parse_calendar` / `format_calendar` のブリッジ呼び出しを削除して typed `VCalendar` を直接操作。テストはワイヤフォーマット文字列を `contains` で検査するのではなく typed フィールド（`cal.events[0].summary`、`event.microsoft.busystatus`、`cal.prodid` 等）で検証する形に更新。
 - PRD §3 非ゴールから "サーバ / サービス同期" 行を削除。CalDAV / クラウドサービス同期は絶対 Non-Goal ではなく v0.2.0 でバージョンステージングされたスコープインに変更。§7 スコープ外の「マシン間でのカレンダー状態クラウド同期」も新規 §9 を参照するよう更新。§3 リストには ADR で裏付けされた絶対 Non-Goal（GUI/WebUI、ICS 以外形式、ベンダープロファイル変換）のみ残置。
 - [ADR-017](design/017-workspace-and-ics-core-crate.md) に従い、リポジトリを Cargo workspace へ再編。`Cargo.toml` は workspace マニフェストに、`makeholiday` バイナリクレートは `crates/makeholiday/` 配下へ移動。挙動変更なし。
 - 空の `crates/ics-core/` ワークスペースメンバを追加（ADR-017 Migration Step 2）。`makeholiday` から path 依存で接続。公開 API はまだ無し。型とパーサは Step 3 で移動。

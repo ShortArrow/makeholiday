@@ -8,7 +8,7 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use ics_core as ics;
+use ics_core::{self as ics, VCalendar};
 use tempfile::NamedTempFile;
 
 use crate::application::ports::CalendarRepository;
@@ -60,16 +60,20 @@ impl CalendarRepository for FileCalendarRepository {
         if self.path.exists() {
             return Err(MhError::already_exists(self.path.clone()));
         }
-        let content = ics::format_calendar(&ics::VCalendar::new("-//makeholiday//EN"));
+        let content = ics::format_calendar(&VCalendar::new("-//makeholiday//EN"));
         self.atomic_write(&content, true)
     }
 
-    fn load(&self) -> Result<String> {
-        std::fs::read_to_string(&self.path).map_err(|e| MhError::io(&self.path, e))
+    fn load(&self) -> Result<VCalendar> {
+        let content =
+            std::fs::read_to_string(&self.path).map_err(|e| MhError::io(&self.path, e))?;
+        let cal = ics::parse_calendar(&content)?;
+        Ok(cal)
     }
 
-    fn save(&self, content: &str) -> Result<()> {
-        self.atomic_write(content, false)
+    fn save(&self, calendar: &VCalendar) -> Result<()> {
+        let content = ics::format_calendar(calendar);
+        self.atomic_write(&content, false)
     }
 
     fn exists(&self) -> bool {

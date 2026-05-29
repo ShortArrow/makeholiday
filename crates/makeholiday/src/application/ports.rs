@@ -3,6 +3,8 @@
 //! Per ADR-009 / ADR-011, the application layer programs against trait
 //! contracts; concrete I/O implementations live in `infrastructure`.
 
+use ics_core::VCalendar;
+
 use crate::error::Result;
 
 /// Read / write contract for a single calendar store (e.g. a file).
@@ -15,14 +17,16 @@ pub trait CalendarRepository {
     /// `MhError::AlreadyExists` if the store already has a calendar.
     fn create(&self) -> Result<()>;
 
-    /// Load the calendar's raw ICS content.
+    /// Load and parse the stored calendar into a typed `VCalendar`.
     ///
-    /// Returns the on-wire string. ADR-001 Migration will lift this to
-    /// `ics_core::VCalendar` once the typed top-level shell exists.
-    fn load(&self) -> Result<String>;
+    /// Parse errors surface as `MhError::Parse` (wrapping `ics_core::Error`).
+    fn load(&self) -> Result<VCalendar>;
 
-    /// Atomically replace the stored calendar with `content`.
-    fn save(&self, content: &str) -> Result<()>;
+    /// Atomically replace the stored calendar with `calendar`.
+    ///
+    /// Implementations are responsible for formatting `calendar` to the
+    /// underlying wire form and writing it atomically.
+    fn save(&self, calendar: &VCalendar) -> Result<()>;
 
     /// True if the underlying store has a calendar to load.
     fn exists(&self) -> bool;

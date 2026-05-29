@@ -100,8 +100,7 @@ pub fn add<R: CalendarRepository>(
         None => start + chrono::Days::new(1),
     };
 
-    let content = repo.load()?;
-    let mut cal = ics::parse_calendar(&content)?;
+    let mut cal = repo.load()?;
 
     let mut event = VEvent {
         uid: uuid::Uuid::new_v4().to_string(),
@@ -126,7 +125,7 @@ pub fn add<R: CalendarRepository>(
     }
 
     cal.events.push(event.clone());
-    repo.save(&ics::format_calendar(&cal))?;
+    repo.save(&cal)?;
 
     let line = format_event_line(&event);
     eprintln!("Added: {line}");
@@ -139,8 +138,7 @@ pub fn list<R: CalendarRepository>(
     descending: bool,
     json: bool,
 ) -> Result<String> {
-    let content = repo.load()?;
-    let cal = ics::parse_calendar(&content)?;
+    let cal = repo.load()?;
     let events = if sort_keys.is_empty() {
         cal.events
     } else {
@@ -165,8 +163,7 @@ pub fn remove<R: CalendarRepository>(
     summary: Option<&str>,
     target: Option<&str>,
 ) -> Result<()> {
-    let content = repo.load()?;
-    let cal = ics::parse_calendar(&content)?;
+    let cal = repo.load()?;
     let events = &cal.events;
 
     let (new_cal, removed_desc) = match (summary, target) {
@@ -225,7 +222,7 @@ pub fn remove<R: CalendarRepository>(
         }
     };
 
-    repo.save(&ics::format_calendar(&new_cal))?;
+    repo.save(&new_cal)?;
     eprintln!("Removed: {removed_desc}");
     Ok(())
 }
@@ -245,9 +242,10 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let repo = temp_repo(&dir, "test.ics");
         init(&repo).unwrap();
-        let content = repo.load().unwrap();
-        let expected = ics::format_calendar(&ics::VCalendar::new("-//makeholiday//EN"));
-        assert_eq!(content, expected);
+        let cal = repo.load().unwrap();
+        assert_eq!(cal.prodid, "-//makeholiday//EN");
+        assert_eq!(cal.version, "2.0");
+        assert!(cal.events.is_empty());
     }
 
     #[test]
@@ -298,10 +296,10 @@ mod tests {
         let repo = temp_repo(&dir, "test.ics");
         init(&repo).unwrap();
         add_free(&repo, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
-        let content = repo.load().unwrap();
-        assert!(content.contains("SUMMARY:元日"));
-        assert!(content.contains("BEGIN:VEVENT"));
-        assert!(content.contains("DTSTAMP:"));
+        let cal = repo.load().unwrap();
+        assert_eq!(cal.events.len(), 1);
+        assert_eq!(cal.events[0].summary, "元日");
+        assert!(!cal.events[0].uid.is_empty());
     }
 
     #[test]
@@ -315,8 +313,7 @@ mod tests {
             "建国記念の日",
             NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(),
         );
-        let content = repo.load().unwrap();
-        let cal = ics::parse_calendar(&content).unwrap();
+        let cal = repo.load().unwrap();
         assert_eq!(cal.events.len(), 2);
         assert_ne!(cal.events[0].uid, cal.events[1].uid);
     }
@@ -406,9 +403,12 @@ mod tests {
             None,
         )
         .unwrap();
-        let content = repo.load().unwrap();
-        assert!(content.contains("X-MICROSOFT-CDO-BUSYSTATUS:OOF"));
-        assert!(content.contains("TRANSP:OPAQUE"));
-        assert!(content.contains("CLASS:PRIVATE"));
+        let cal = repo.load().unwrap();
+        let event = &cal.events[0];
+        assert_eq!(
+            event.microsoft.as_ref().and_then(|m| m.busystatus),
+            Some(ics::microsoft::MsBusyStatus::Oof)
+        );
+        assert_eq!(event.class, Some(ics::EventClass::Private));
     }
 }
