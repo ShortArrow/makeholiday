@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-05-29
+
+PRD §9 にいう Solid Local CLI としての `makeholiday` の最初のカット。ICS テキスト操作のみが対象、CalDAV / クラウドバックエンドは v0.2.0 / v0.3.0 にバージョンステージング。105 件の ics-core + 19 件の makeholiday 単体 + 16 件の CLI 統合テストが本リリースの全コミットを ゲート している。
+
 ### 変更
 - ADR-019 Migration Step 2: typed TEXT フィールドの escape decode / encode 対応。新規 `crates/ics-core/src/parser/escape.rs` で RFC 5545 §3.3.11 に準拠した `decode_text` / `encode_text` / `split_text_list` / `join_text_list` を実装（`\\` / `\;` / `\,` / `\n` / `\N` のマッピング）。パーサは `SUMMARY` に `decode_text`、`CATEGORIES` 各項目に `split_text_list` を適用、フォーマッタは出力時に `encode_text` / `join_text_list` を適用。ADR-018 通り `RawProperty.value` は **escape 解釈しない** — escape ハンドリングは非対称で、型モデルが所有するフィールドのみが対象。`SUMMARY` 内のコンマ・セミコロン・改行・バックスラッシュ、`CATEGORIES` 項目内のコンマがラウンドトリップ可能になった。
 - ADR-019 Migration Step 1: パーサのディスパッチを `LogicalLine` トークン経由に再編（`crates/ics-core/src/parser/line.rs`）。`parse_logical_line` で論理行 1 本ごとにプロパティ名（UPPERCASE）、パラメータ（キー UPPERCASE、値の囲み `"` を除去、順序保持）、生の value を抽出。下流ディスパッチは `strip_prefix("NAME:")` から `LogicalLine.name` の match へ。副作用として、追加パラメータ付きプロパティが正しくルーティングされる（例: `UID;X-FOO=bar:abc-123` で UID 取得）、`DTSTART;VALUE=DATE` の検出がパラメータ位置に依存しなくなる。`Error` に `parse_at_line` と `parse_at` コンストラクタを追加、`DTSTAMP` / `DTSTART` / `DTEND` のパースエラーと必須フィールド欠落エラーが 1-based 論理行番号と該当プロパティ名を含む形式で出力（例: `parse error at line 6 [DTSTAMP]: Invalid DTSTAMP: ...`）。`Error` の Display は手書きに切替、`thiserror` を ics-core の依存から削除。
@@ -40,12 +44,3 @@
 - ADR 000〜023: ADR ポリシー、ベンダー拡張型付けモデル、言語/エディション、デュアルライセンス、Trunk-based + SemVer、Conventional Commits、テスト戦略、ドキュメント言語ポリシー、MSRV、モジュール階層、lib/main 分離、I/O 境界 + リポジトリパターン、エラーハンドリング、依存ポリシー、CI/CD プラットフォーム、診断出力、設定ポリシー、ワークスペース + `ics-core` クレート、ラウンドトリップ戦略、パーサ実装、CLI サブコマンドポリシー、VTODO スコープ、TUI フロントエンドポリシー、`convert` サブコマンド非提供決定。
 - [ADR-024](design/024-solo-phase-branching-carve-out.md) — Solo フェーズの間 ADR-004 の feature ブランチ + PR セレモニーを一時停止する例外。`ics-core` のリポジトリ分離、外部コントリビュータの PR、`v1.0.0` タグのいずれかで自動解除。
 
-## [0.1.0]
-
-### 追加
-- `init` サブコマンド — 新規 `VCALENDAR` ファイル作成。
-- `add` サブコマンド — `--summary` / `--start` / `--end` で終日 `VEVENT` を追加。任意で `--busystatus`, `--class`, `--category`（繰り返し可）, `--icon` をサポート。必須引数省略時は対話プロンプト。
-- `list` サブコマンド — `--sort`（繰り返し: `start` / `end` / `summary`）, `--desc`, `--json` でイベント列挙。
-- `icons` サブコマンド — 同梱プリセットアイコン名を表示。
-- `remove` サブコマンド — 1 始まりインデックス式（`N`, `N-M`, `N,M`, 混在）, `--summary` 一致, 対話選択で削除。
-- デュアルライセンス: MIT OR Apache-2.0。

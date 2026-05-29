@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-05-29
+
+The first cut of `makeholiday` as a Solid Local CLI per PRD §9. ICS text operations only; CalDAV / cloud backends are version-staged for v0.2.0 and v0.3.0. The 105 ics-core + 19 makeholiday unit + 16 CLI integration tests gate every commit on this release.
+
 ### Changed
 - ADR-019 Migration Step 2: TEXT escape decode / encode for typed TEXT fields. New `crates/ics-core/src/parser/escape.rs` defines `decode_text`, `encode_text`, `split_text_list`, `join_text_list` per RFC 5545 §3.3.11 (`\\` / `\;` / `\,` / `\n` / `\N` mappings). Parser applies `decode_text` to `SUMMARY` and `split_text_list` to `CATEGORIES` items; formatter applies `encode_text` / `join_text_list` on the way out. Per ADR-018, `RawProperty.value` is **not** escape-interpreted — escape handling is asymmetric and only touches fields the typed model owns. Round-trip tests cover commas / semicolons / newlines / backslashes in `SUMMARY` and commas inside `CATEGORIES` items.
 - ADR-019 Migration Step 1: parser dispatch refactored to flow through a `LogicalLine` token (`crates/ics-core/src/parser/line.rs`). `parse_logical_line` extracts the property name (UPPERCASE), parameters (UPPERCASE keys, quotes stripped from values, order preserved), and the raw value once per logical line; downstream dispatch matches on `LogicalLine.name` instead of `strip_prefix("NAME:")`. Side effects: properties with extra parameters now route correctly (e.g. `UID;X-FOO=bar:abc-123` populates UID), and `DTSTART;VALUE=DATE` is detected regardless of where `VALUE=DATE` appears in the parameter list. `Error` gains `parse_at_line` and `parse_at` constructors; parse errors at `DTSTAMP` / `DTSTART` / `DTEND` and at the missing-required-field point now carry the 1-based logical line number and the offending property name in the rendered message (e.g. `parse error at line 6 [DTSTAMP]: Invalid DTSTAMP: ...`). `Error` Display is now hand-written; `thiserror` is no longer a dependency of `ics-core`.
@@ -40,12 +44,3 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - ADRs 000–023 covering ADR policy, vendor extension typing model, language/edition, dual licensing, trunk-based development + SemVer, Conventional Commits, testing strategy, documentation language policy, MSRV, module layering, lib/main separation, I/O boundary + repository pattern, error handling, dependency policy, CI/CD platform, diagnostic output, configuration policy, workspace + `ics-core` crate, round-trip strategy, parser implementation, CLI subcommand policy, VTODO scope, TUI front-end policy, and the explicit rejection of a `convert` subcommand.
 - [ADR-024](docs/design/024-solo-phase-branching-carve-out.md) — solo-phase carve-out that suspends the ADR-004 feature-branch + PR ceremony until `ics-core` is split, an external contributor opens a PR, or `v1.0.0` is tagged.
 
-## [0.1.0]
-
-### Added
-- `init` subcommand — create a new `VCALENDAR` file.
-- `add` subcommand — append all-day `VEVENT` with `--summary` / `--start` / `--end`, optional `--busystatus`, `--class`, `--category` (repeatable), `--icon`; interactive prompts when required args are omitted.
-- `list` subcommand — enumerate events with `--sort` (repeatable: `start` / `end` / `summary`), `--desc`, `--json`.
-- `icons` subcommand — print bundled preset icon names.
-- `remove` subcommand — delete events by 1-based index expression (`N`, `N-M`, `N,M`, mixed), `--summary` match, or interactive selection.
-- Dual licensing: MIT OR Apache-2.0.
