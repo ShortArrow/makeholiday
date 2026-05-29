@@ -1,5 +1,6 @@
 use crate::error::{Error, Result};
-use crate::event::{BusyStatus, EventClass, Transp, VEvent};
+use crate::event::{EventClass, Transp, VEvent};
+use crate::profile::microsoft::{self, MsBusyStatus};
 use crate::raw::{RawComponent, RawProperty};
 use crate::vcalendar::VCalendar;
 use chrono::{NaiveDate, NaiveDateTime};
@@ -98,7 +99,7 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
     let mut dtend: Option<NaiveDate> = None;
     let mut summary = String::new();
     let mut transp: Option<Transp> = None;
-    let mut busystatus = BusyStatus::Free;
+    let mut ms_busystatus: Option<MsBusyStatus> = None;
     let mut class: Option<EventClass> = None;
     let mut categories: Vec<String> = Vec::new();
     let mut icon: Option<String> = None;
@@ -121,10 +122,12 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
                     dtend: e,
                     summary,
                     transp,
-                    busystatus,
                     class,
                     categories,
                     icon,
+                    microsoft: ms_busystatus.map(|b| microsoft::EventExtensions {
+                        busystatus: Some(b),
+                    }),
                     unknown,
                     unrecognized_components,
                 },
@@ -159,8 +162,8 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
         } else if let Some(val) = line.strip_prefix("TRANSP:") {
             transp = Transp::from_ics(val);
         } else if let Some(val) = line.strip_prefix("X-MICROSOFT-CDO-BUSYSTATUS:") {
-            if let Some(bs) = BusyStatus::from_cdo(val) {
-                busystatus = bs;
+            if let Some(bs) = MsBusyStatus::from_cdo(val) {
+                ms_busystatus = Some(bs);
             }
         } else if let Some(val) = line.strip_prefix("CLASS:") {
             class = EventClass::from_ics(val);
@@ -303,7 +306,8 @@ pub fn parse_indices(input: &str, max: usize) -> Result<Vec<usize>> {
 mod tests {
     use super::*;
     use crate::calendar::format_calendar;
-    use crate::event::{BusyStatus, EventClass};
+    use crate::event::EventClass;
+    use crate::profile::microsoft::{EventExtensions as MsExtensions, MsBusyStatus};
     use crate::raw::{RawComponent, RawProperty};
     use crate::test_helpers::make_event;
     use crate::vcalendar::VCalendar;
@@ -318,26 +322,34 @@ mod tests {
     #[test]
     fn parse_roundtrip_with_busystatus_and_class() {
         let mut event = make_event("rt-bs", (2026, 5, 1), (2026, 5, 2), "出張");
-        event.busystatus = BusyStatus::WorkingElsewhere;
+        event.microsoft = Some(MsExtensions {
+            busystatus: Some(MsBusyStatus::WorkingElsewhere),
+        });
         event.class = Some(EventClass::Confidential);
         let cal = format_calendar(&vcal(vec![event.clone()]));
         let parsed = parse_calendar(&cal).unwrap();
         assert_eq!(parsed.events.len(), 1);
-        assert_eq!(parsed.events[0].busystatus, BusyStatus::WorkingElsewhere);
+        assert_eq!(
+            parsed.events[0]
+                .microsoft
+                .as_ref()
+                .and_then(|m| m.busystatus),
+            Some(MsBusyStatus::WorkingElsewhere)
+        );
         assert_eq!(parsed.events[0].class, Some(EventClass::Confidential));
     }
 
     #[test]
     fn parse_events_roundtrip() {
+        // make_event leaves microsoft = None and transp = None; the formatter
+        // omits both TRANSP and X-MICROSOFT-CDO-BUSYSTATUS in that case so
+        // the round-trip is exact (no inferred fields appearing in the
+        // re-parsed value).
         let event = make_event("rt-1", (2026, 5, 3), (2026, 5, 4), "憲法記念日");
         let cal = format_calendar(&vcal(vec![event.clone()]));
         let parsed = parse_calendar(&cal).unwrap();
         assert_eq!(parsed.events.len(), 1);
-        // The formatter always emits TRANSP (derived from busystatus when
-        // transp is None) so the parsed event carries it as a typed field.
-        let mut expected = event.clone();
-        expected.transp = Some(crate::Transp::Transparent);
-        assert_eq!(parsed.events[0], expected);
+        assert_eq!(parsed.events[0], event);
     }
 
     #[test]
@@ -444,11 +456,19 @@ mod tests {
     #[test]
     fn typed_x_microsoft_and_x_makeholiday_stay_typed_not_in_unknown() {
         let mut event = make_event("rt-typed", (2026, 4, 29), (2026, 4, 30), "昭和の日");
-        event.busystatus = BusyStatus::Oof;
+        event.microsoft = Some(MsExtensions {
+            busystatus: Some(MsBusyStatus::Oof),
+        });
         event.icon = Some("flag".to_string());
         let cal = format_calendar(&vcal(vec![event.clone()]));
         let parsed = parse_calendar(&cal).unwrap();
-        assert_eq!(parsed.events[0].busystatus, BusyStatus::Oof);
+        assert_eq!(
+            parsed.events[0]
+                .microsoft
+                .as_ref()
+                .and_then(|m| m.busystatus),
+            Some(MsBusyStatus::Oof)
+        );
         assert_eq!(parsed.events[0].icon.as_deref(), Some("flag"));
         assert!(parsed.events[0].unknown.is_empty());
     }
@@ -554,9 +574,11 @@ mod tests {
     #[test]
     fn transp_field_overrides_busystatus_derived_transp_on_output() {
         // If transp is explicitly set, the formatter must honor it even
-        // when busystatus would derive a different value.
+        // when microsoft.busystatus would derive a different value.
         let mut event = make_event("transp-override", (2026, 4, 29), (2026, 4, 30), "s");
-        event.busystatus = BusyStatus::Oof; // derives OPAQUE
+        event.microsoft = Some(MsExtensions {
+            busystatus: Some(MsBusyStatus::Oof), // derives OPAQUE
+        });
         event.transp = Some(crate::Transp::Transparent); // typed override
         let cal = format_calendar(&vcal(vec![event]));
         assert!(cal.contains("TRANSP:TRANSPARENT\r\n"));
@@ -564,12 +586,22 @@ mod tests {
     }
 
     #[test]
-    fn transp_none_falls_back_to_busystatus_derived_value() {
+    fn transp_none_falls_back_to_microsoft_busystatus_derived_value() {
         let mut event = make_event("transp-fallback", (2026, 4, 29), (2026, 4, 30), "s");
-        event.busystatus = BusyStatus::Oof; // derives OPAQUE
+        event.microsoft = Some(MsExtensions {
+            busystatus: Some(MsBusyStatus::Oof), // derives OPAQUE
+        });
         event.transp = None;
         let cal = format_calendar(&vcal(vec![event]));
         assert!(cal.contains("TRANSP:OPAQUE\r\n"));
+    }
+
+    #[test]
+    fn no_microsoft_and_no_transp_omits_both_lines() {
+        let event = make_event("transp-nothing", (2026, 4, 29), (2026, 4, 30), "s");
+        let cal = format_calendar(&vcal(vec![event]));
+        assert!(!cal.contains("TRANSP:"));
+        assert!(!cal.contains("X-MICROSOFT-CDO-BUSYSTATUS:"));
     }
 
     #[test]

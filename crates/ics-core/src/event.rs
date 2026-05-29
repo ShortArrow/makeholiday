@@ -1,47 +1,7 @@
+use crate::profile::microsoft;
 use crate::raw::{RawComponent, RawProperty};
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::Serialize;
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BusyStatus {
-    Free,
-    Tentative,
-    Busy,
-    Oof,
-    #[serde(rename = "working")]
-    WorkingElsewhere,
-}
-
-impl BusyStatus {
-    pub fn transp(self) -> &'static str {
-        match self {
-            BusyStatus::Free => "TRANSPARENT",
-            _ => "OPAQUE",
-        }
-    }
-
-    pub fn cdo_value(self) -> &'static str {
-        match self {
-            BusyStatus::Free => "FREE",
-            BusyStatus::Tentative => "TENTATIVE",
-            BusyStatus::Busy => "BUSY",
-            BusyStatus::Oof => "OOF",
-            BusyStatus::WorkingElsewhere => "WORKINGELSEWHERE",
-        }
-    }
-
-    pub fn from_cdo(s: &str) -> Option<Self> {
-        match s {
-            "FREE" => Some(BusyStatus::Free),
-            "TENTATIVE" => Some(BusyStatus::Tentative),
-            "BUSY" => Some(BusyStatus::Busy),
-            "OOF" => Some(BusyStatus::Oof),
-            "WORKINGELSEWHERE" => Some(BusyStatus::WorkingElsewhere),
-            _ => None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -105,26 +65,24 @@ pub struct VEvent {
     #[serde(serialize_with = "serialize_date")]
     pub dtend: NaiveDate,
     pub summary: String,
-    /// RFC 5545 `TRANSP`. ADR-001 Migration Step 3 introduces this as a
-    /// first-class typed field; Step 4 moves the legacy `busystatus`
-    /// (which today carries Microsoft `X-MICROSOFT-CDO-BUSYSTATUS`
-    /// semantics) into a vendor bundle so the two stop overlapping.
+    /// RFC 5545 `TRANSP`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transp: Option<Transp>,
-    pub busystatus: BusyStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub class: Option<EventClass>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub categories: Vec<String>,
     // ADR-001 Migration: X-MAKEHOLIDAY-ICON moves out of VEvent into a
-    // makeholiday-side reader on VEvent.unknown. Kept here through Step 3
-    // so use sites don't break before the typed-extension restructure.
+    // makeholiday-side reader on VEvent.unknown in Step 5.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
 
+    /// Microsoft / Outlook event extension bundle. `X-MICROSOFT-CDO-BUSYSTATUS`
+    /// lives in `microsoft.busystatus` after ADR-001 Migration Step 4.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub microsoft: Option<microsoft::EventExtensions>,
+
     /// Properties matching no registered vendor prefix (ADR-001 rule 4).
-    /// Includes both the property name and its parameters; round-tripped
-    /// per ADR-018 in `source_index` order at the tail of the component.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unknown: Vec<RawProperty>,
 

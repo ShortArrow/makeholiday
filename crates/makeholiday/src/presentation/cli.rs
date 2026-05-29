@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand, ValueEnum};
 
-use ics_core::{BusyStatus, EventClass, SortKey};
+use ics_core::microsoft::MsBusyStatus;
+use ics_core::{EventClass, SortKey};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SortField {
@@ -32,13 +33,13 @@ pub enum CliBusyStatus {
 }
 
 impl CliBusyStatus {
-    pub fn to_busystatus(self) -> BusyStatus {
+    pub fn to_busystatus(self) -> MsBusyStatus {
         match self {
-            CliBusyStatus::Free => BusyStatus::Free,
-            CliBusyStatus::Tentative => BusyStatus::Tentative,
-            CliBusyStatus::Busy => BusyStatus::Busy,
-            CliBusyStatus::Oof => BusyStatus::Oof,
-            CliBusyStatus::Working => BusyStatus::WorkingElsewhere,
+            CliBusyStatus::Free => MsBusyStatus::Free,
+            CliBusyStatus::Tentative => MsBusyStatus::Tentative,
+            CliBusyStatus::Busy => MsBusyStatus::Busy,
+            CliBusyStatus::Oof => MsBusyStatus::Oof,
+            CliBusyStatus::Working => MsBusyStatus::WorkingElsewhere,
         }
     }
 }

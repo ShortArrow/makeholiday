@@ -1,0 +1,65 @@
+//! Microsoft / Outlook profile bundle (`X-MICROSOFT-CDO-*`, `X-MICROSOFT-*`).
+//!
+//! Houses the typed `MsBusyStatus` (RFC `TRANSP` has 2 values; Microsoft's
+//! busy state has 5 — they are not interchangeable, which is why this
+//! sits in a vendor bundle, not on `VEvent` directly).
+
+use serde::Serialize;
+
+/// Property name prefixes owned by this profile. Longest match wins per
+/// ADR-001 rule 3. Step 6 wires this into the parser's prefix routing.
+pub const PREFIXES: &[&str] = &["X-MICROSOFT-CDO-", "X-MICROSOFT-"];
+
+/// Microsoft's `X-MICROSOFT-CDO-BUSYSTATUS` value space.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MsBusyStatus {
+    Free,
+    Tentative,
+    Busy,
+    Oof,
+    #[serde(rename = "working")]
+    WorkingElsewhere,
+}
+
+impl MsBusyStatus {
+    /// Derive the matching RFC 5545 `TRANSP` value. Used as a fallback
+    /// by the formatter when `VEvent.transp` is `None`.
+    pub fn transp(self) -> &'static str {
+        match self {
+            MsBusyStatus::Free => "TRANSPARENT",
+            _ => "OPAQUE",
+        }
+    }
+
+    pub fn cdo_value(self) -> &'static str {
+        match self {
+            MsBusyStatus::Free => "FREE",
+            MsBusyStatus::Tentative => "TENTATIVE",
+            MsBusyStatus::Busy => "BUSY",
+            MsBusyStatus::Oof => "OOF",
+            MsBusyStatus::WorkingElsewhere => "WORKINGELSEWHERE",
+        }
+    }
+
+    pub fn from_cdo(s: &str) -> Option<Self> {
+        match s {
+            "FREE" => Some(MsBusyStatus::Free),
+            "TENTATIVE" => Some(MsBusyStatus::Tentative),
+            "BUSY" => Some(MsBusyStatus::Busy),
+            "OOF" => Some(MsBusyStatus::Oof),
+            "WORKINGELSEWHERE" => Some(MsBusyStatus::WorkingElsewhere),
+            _ => None,
+        }
+    }
+}
+
+/// Microsoft event-level extension bundle (ADR-001 Option B).
+///
+/// Step 6 will add an `unrecognized: Vec<RawProperty>` here for prefix-
+/// matched-but-not-yet-typed `X-MICROSOFT-*` properties.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+pub struct EventExtensions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub busystatus: Option<MsBusyStatus>,
+}

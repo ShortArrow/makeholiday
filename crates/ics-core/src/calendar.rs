@@ -4,14 +4,13 @@ use crate::vcalendar::VCalendar;
 
 pub fn format_vevent(event: &VEvent) -> String {
     // TRANSP precedence: prefer the typed `transp` field if set;
-    // otherwise fall back to the value derived from `busystatus` for
-    // round-trip compatibility (ADR-001 Migration Step 3 transitional
-    // behavior — busystatus moves into a Microsoft vendor bundle in
-    // Step 4 at which point this fallback goes away).
+    // otherwise derive from the Microsoft busystatus when present
+    // (vendor-specific fallback); otherwise omit TRANSP altogether.
+    let ms_busystatus = event.microsoft.as_ref().and_then(|m| m.busystatus);
     let transp_value = event
         .transp
         .map(|t| t.ics_value())
-        .unwrap_or_else(|| event.busystatus.transp());
+        .or_else(|| ms_busystatus.map(|b| b.transp()));
     let mut lines = vec![
         "BEGIN:VEVENT".to_string(),
         format!("UID:{}", event.uid),
@@ -19,12 +18,13 @@ pub fn format_vevent(event: &VEvent) -> String {
         format!("DTSTART;VALUE=DATE:{}", event.dtstart.format("%Y%m%d")),
         format!("DTEND;VALUE=DATE:{}", event.dtend.format("%Y%m%d")),
         format!("SUMMARY:{}", event.summary),
-        format!("TRANSP:{transp_value}"),
-        format!(
-            "X-MICROSOFT-CDO-BUSYSTATUS:{}",
-            event.busystatus.cdo_value()
-        ),
     ];
+    if let Some(v) = transp_value {
+        lines.push(format!("TRANSP:{v}"));
+    }
+    if let Some(bs) = ms_busystatus {
+        lines.push(format!("X-MICROSOFT-CDO-BUSYSTATUS:{}", bs.cdo_value()));
+    }
     if let Some(class) = event.class {
         lines.push(format!("CLASS:{}", class.ics_value()));
     }
@@ -111,8 +111,9 @@ fn format_raw_component(comp: &RawComponent, lines: &mut Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event::{BusyStatus, EventClass};
+    use crate::event::EventClass;
     use crate::parser::parse_calendar;
+    use crate::profile::microsoft::{EventExtensions as MsExtensions, MsBusyStatus};
     use crate::test_helpers::make_event;
 
     fn vcal(events: Vec<VEvent>) -> VCalendar {
@@ -139,7 +140,10 @@ mod tests {
 
     #[test]
     fn format_vevent_single_day() {
-        let event = make_event("test-uid-1", (2026, 1, 1), (2026, 1, 2), "元日");
+        let mut event = make_event("test-uid-1", (2026, 1, 1), (2026, 1, 2), "元日");
+        event.microsoft = Some(MsExtensions {
+            busystatus: Some(MsBusyStatus::Free),
+        });
         let output = format_vevent(&event);
         assert!(output.contains("BEGIN:VEVENT\r\n"));
         assert!(output.contains("DTSTAMP:20260327T000000Z\r\n"));
@@ -164,7 +168,9 @@ mod tests {
     #[test]
     fn format_vevent_oof_private() {
         let mut event = make_event("oof-1", (2026, 8, 1), (2026, 8, 2), "不在");
-        event.busystatus = BusyStatus::Oof;
+        event.microsoft = Some(MsExtensions {
+            busystatus: Some(MsBusyStatus::Oof),
+        });
         event.class = Some(EventClass::Private);
         let output = format_vevent(&event);
         assert!(output.contains("TRANSP:OPAQUE\r\n"));
