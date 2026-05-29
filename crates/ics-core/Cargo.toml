@@ -12,4 +12,3 @@ publish = false
 [dependencies]
 chrono.workspace = true
 serde.workspace = true
-thiserror.workspace = true

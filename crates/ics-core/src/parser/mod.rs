@@ -1,7 +1,9 @@
+pub mod line;
 pub mod unfold;
 
 use crate::error::{Error, Result};
 use crate::event::{EventClass, Transp, VEvent};
+use crate::parser::line::parse_logical_line;
 use crate::profile::microsoft::MsBusyStatus;
 use crate::profile::{google, icloud, microsoft};
 use crate::raw::{RawComponent, RawProperty};
@@ -120,10 +122,13 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
     let mut idx = start;
     while idx < lines.len() {
         let line = lines[idx];
+        let line_no = (idx + 1) as u32;
         if line == "END:VEVENT" {
-            let stamp = dtstamp.ok_or_else(|| Error::parse("VEVENT missing DTSTAMP"))?;
-            let s = dtstart.ok_or_else(|| Error::parse("VEVENT missing DTSTART"))?;
-            let e = dtend.ok_or_else(|| Error::parse("VEVENT missing DTEND"))?;
+            let stamp =
+                dtstamp.ok_or_else(|| Error::parse_at_line(line_no, "VEVENT missing DTSTAMP"))?;
+            let s =
+                dtstart.ok_or_else(|| Error::parse_at_line(line_no, "VEVENT missing DTSTART"))?;
+            let e = dtend.ok_or_else(|| Error::parse_at_line(line_no, "VEVENT missing DTEND"))?;
             return Ok((
                 VEvent {
                     uid,
@@ -168,52 +173,72 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
             idx = next;
             continue;
         }
-        if let Some(val) = line.strip_prefix("UID:") {
-            uid = val.to_string();
-        } else if let Some(val) = line.strip_prefix("DTSTAMP:") {
-            dtstamp = Some(
-                NaiveDateTime::parse_from_str(val, "%Y%m%dT%H%M%SZ")
-                    .map_err(|e| Error::parse(format!("Invalid DTSTAMP: {e}")))?,
-            );
-        } else if let Some(val) = line.strip_prefix("DTSTART;VALUE=DATE:") {
-            dtstart = Some(
-                NaiveDate::parse_from_str(val, "%Y%m%d")
-                    .map_err(|e| Error::parse(format!("Invalid DTSTART: {e}")))?,
-            );
-        } else if let Some(val) = line.strip_prefix("DTEND;VALUE=DATE:") {
-            dtend = Some(
-                NaiveDate::parse_from_str(val, "%Y%m%d")
-                    .map_err(|e| Error::parse(format!("Invalid DTEND: {e}")))?,
-            );
-        } else if let Some(val) = line.strip_prefix("SUMMARY:") {
-            summary = val.to_string();
-        } else if let Some(val) = line.strip_prefix("TRANSP:") {
-            transp = Transp::from_ics(val);
-        } else if let Some(val) = line.strip_prefix("X-MICROSOFT-CDO-BUSYSTATUS:") {
-            if let Some(bs) = MsBusyStatus::from_cdo(val) {
-                ms_busystatus = Some(bs);
-            }
-        } else if let Some(val) = line.strip_prefix("CLASS:") {
-            class = EventClass::from_ics(val);
-        } else if let Some(val) = line.strip_prefix("CATEGORIES:") {
-            categories = val.split(',').map(|s| s.trim().to_string()).collect();
-        } else if line.starts_with("X-") {
-            x_index += 1;
-            if let Some(prop) = parse_raw_property(line, x_index) {
-                if microsoft::owns_property(&prop.name) {
-                    ms_unrecognized.push(prop);
-                } else if google::owns_property(&prop.name) {
-                    google_unrecognized.push(prop);
-                } else if icloud::owns_property(&prop.name) {
-                    icloud_unrecognized.push(prop);
-                } else {
-                    unknown.push(prop);
+        if let Some(ll) = parse_logical_line(line) {
+            match ll.name.as_str() {
+                "UID" => uid = ll.value.to_string(),
+                "DTSTAMP" => {
+                    dtstamp = Some(
+                        NaiveDateTime::parse_from_str(ll.value, "%Y%m%dT%H%M%SZ").map_err(|e| {
+                            Error::parse_at(line_no, "DTSTAMP", format!("Invalid DTSTAMP: {e}"))
+                        })?,
+                    );
+                }
+                "DTSTART" => {
+                    if has_value_date_param(&ll.params) {
+                        dtstart =
+                            Some(NaiveDate::parse_from_str(ll.value, "%Y%m%d").map_err(|e| {
+                                Error::parse_at(line_no, "DTSTART", format!("Invalid DTSTART: {e}"))
+                            })?);
+                    }
+                    // Timed events (DTSTART;VALUE=DATE-TIME or no VALUE) currently
+                    // fall through silently per ADR-001 Rule 9; v0.3.0 lifts this.
+                }
+                "DTEND" => {
+                    if has_value_date_param(&ll.params) {
+                        dtend =
+                            Some(NaiveDate::parse_from_str(ll.value, "%Y%m%d").map_err(|e| {
+                                Error::parse_at(line_no, "DTEND", format!("Invalid DTEND: {e}"))
+                            })?);
+                    }
+                }
+                "SUMMARY" => summary = ll.value.to_string(),
+                "TRANSP" => transp = Transp::from_ics(ll.value),
+                "X-MICROSOFT-CDO-BUSYSTATUS" => {
+                    if let Some(bs) = MsBusyStatus::from_cdo(ll.value) {
+                        ms_busystatus = Some(bs);
+                    }
+                }
+                "CLASS" => class = EventClass::from_ics(ll.value),
+                "CATEGORIES" => {
+                    categories = ll.value.split(',').map(|s| s.trim().to_string()).collect();
+                }
+                name if name.starts_with("X-") => {
+                    x_index += 1;
+                    let prop = ll.to_raw_property(x_index);
+                    if microsoft::owns_property(&prop.name) {
+                        ms_unrecognized.push(prop);
+                    } else if google::owns_property(&prop.name) {
+                        google_unrecognized.push(prop);
+                    } else if icloud::owns_property(&prop.name) {
+                        icloud_unrecognized.push(prop);
+                    } else {
+                        unknown.push(prop);
+                    }
+                }
+                _ => {
+                    // Unknown non-X property — ignored for now. Future work:
+                    // promote to VEvent.unknown for full round-trip preservation.
                 }
             }
         }
         idx += 1;
     }
     Err(Error::parse("VEVENT missing END:VEVENT"))
+}
+
+/// True if the parameter list contains `VALUE=DATE` (date-only typing).
+fn has_value_date_param(params: &[(String, String)]) -> bool {
+    params.iter().any(|(k, v)| k == "VALUE" && v == "DATE")
 }
 
 /// Recursively capture a `BEGIN:<name>...END:<name>` block as a
@@ -274,29 +299,13 @@ fn parse_raw_component_block(name: &str, lines: &[&str], start: usize) -> (RawCo
 }
 
 /// Parse a property line `NAME[;PARAM=VALUE...]:VALUE` into a `RawProperty`.
-/// Returns `None` if the line has no `:` separator. Quoted parameter values
-/// have their surrounding `"` stripped; other escapes are left intact per
-/// ADR-018 (raw value preservation).
+///
+/// Thin wrapper around `line::parse_logical_line` + `LogicalLine::to_raw_property`
+/// kept for the unrecognized-component path and for existing tests. Quoted
+/// parameter values have their surrounding `"` stripped; TEXT-value
+/// escapes are left intact per ADR-018 (raw value preservation).
 pub(crate) fn parse_raw_property(line: &str, source_index: u32) -> Option<RawProperty> {
-    let colon = line.find(':')?;
-    let prefix = &line[..colon];
-    let value = &line[colon + 1..];
-
-    let mut parts = prefix.split(';');
-    let name = parts.next()?.to_uppercase();
-    let mut params = Vec::new();
-    for p in parts {
-        if let Some((k, v)) = p.split_once('=') {
-            let v = v.trim_matches('"');
-            params.push((k.to_uppercase(), v.to_string()));
-        }
-    }
-    Some(RawProperty {
-        name,
-        params,
-        value: value.to_string(),
-        source_index,
-    })
+    parse_logical_line(line).map(|ll| ll.to_raw_property(source_index))
 }
 
 /// Parse index specifier: "3", "1,4,6", "3-7", "1,3-5,8"
@@ -921,6 +930,84 @@ mod tests {
         input.push_str("END:VEVENT\r\nEND:VCALENDAR\r\n");
         let parsed = parse_calendar(&input).unwrap();
         assert_eq!(parsed.events[0].summary, "憲法記念日");
+    }
+
+    // ADR-019 Step 1 — LogicalLine dispatch + parse error line numbers.
+
+    #[test]
+    fn invalid_dtstamp_error_message_carries_line_number() {
+        // The bogus DTSTAMP is on logical line 6 (post-unfold, 1-based).
+        let mut input = String::from("BEGIN:VCALENDAR\r\n"); // line 1
+        input.push_str("VERSION:2.0\r\n"); // line 2
+        input.push_str("PRODID:-//mh//EN\r\n"); // line 3
+        input.push_str("BEGIN:VEVENT\r\n"); // line 4
+        input.push_str("UID:e1\r\n"); // line 5
+        input.push_str("DTSTAMP:NOT-A-DATE\r\n"); // line 6 — error here
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\n");
+        input.push_str("DTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:s\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        let err = parse_calendar(&input).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("at line 6"),
+            "expected 'at line 6' in error: {msg}"
+        );
+        assert!(
+            msg.contains("DTSTAMP"),
+            "expected DTSTAMP property name in error: {msg}"
+        );
+    }
+
+    #[test]
+    fn missing_required_field_error_carries_end_vevent_line() {
+        // VEVENT body has no DTSTAMP; the END:VEVENT line is where we
+        // discover the missing required field.
+        let mut input = String::from("BEGIN:VCALENDAR\r\n"); // line 1
+        input.push_str("VERSION:2.0\r\n"); // line 2
+        input.push_str("PRODID:-//mh//EN\r\n"); // line 3
+        input.push_str("BEGIN:VEVENT\r\n"); // line 4
+        input.push_str("UID:e1\r\n"); // line 5
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\n"); // line 6
+        input.push_str("DTEND;VALUE=DATE:20260430\r\n"); // line 7
+        input.push_str("SUMMARY:s\r\n"); // line 8
+        input.push_str("END:VEVENT\r\n"); // line 9 — END:VEVENT
+        input.push_str("END:VCALENDAR\r\n");
+        let err = parse_calendar(&input).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("at line 9"), "expected 'at line 9': {msg}");
+        assert!(msg.contains("missing DTSTAMP"));
+    }
+
+    #[test]
+    fn dispatch_handles_property_with_extra_params() {
+        // UID;X-FOO=bar:abc-123 must still set uid; the old strip_prefix
+        // dispatcher would have missed this because of the inline param.
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID;X-FOO=bar:event-uid-with-param\r\n");
+        input.push_str("DTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:s\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        assert_eq!(parsed.events[0].uid, "event-uid-with-param");
+    }
+
+    #[test]
+    fn dispatch_handles_value_date_param_in_any_position() {
+        // DTSTART;TZID=Asia/Tokyo;VALUE=DATE:20260429 — VALUE=DATE is the
+        // second param, not the first. With LogicalLine the param scan is
+        // order-independent.
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;TZID=Asia/Tokyo;VALUE=DATE:20260429\r\n");
+        input.push_str("DTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:s\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        assert_eq!(
+            parsed.events[0].dtstart,
+            chrono::NaiveDate::from_ymd_opt(2026, 4, 29).unwrap()
+        );
     }
 
     #[test]
