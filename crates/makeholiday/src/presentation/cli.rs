@@ -91,8 +91,26 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Initialize a new ICS calendar file
+    #[command(long_about = "\
+Initialize a new VCALENDAR file at the path given by --file (default: calendar.ics).
+Fails if the file already exists.
+
+Example:
+  makeholiday init
+  makeholiday -f holidays.ics init
+")]
     Init,
     /// Add an all-day event to the calendar
+    #[command(long_about = "\
+Append a single-day or multi-day all-day VEVENT to the calendar.
+--end is inclusive; omit it for a single-day event.
+
+Examples:
+  makeholiday add --summary 元日 --start 2026-01-01
+  makeholiday add --summary 年末年始 --start 2026-12-29 --end 2027-01-03
+  makeholiday add --summary 出張 --start 2026/5/10 --end 2026/5/12 \\
+      --busystatus oof --category 仕事 --icon airplane
+")]
     Add {
         /// Event summary/title (interactive if omitted)
         #[arg(long)]
@@ -117,6 +135,16 @@ pub enum Commands {
         icon: Option<String>,
     },
     /// List all events in the calendar
+    #[command(long_about = "\
+Print every event in the calendar, one per line, numbered for use with `remove <INDEX>`.
+--sort is repeatable for multi-key sort. --json switches to JSON output (useful for scripts).
+
+Examples:
+  makeholiday list
+  makeholiday list --sort start
+  makeholiday list --sort start --sort summary --desc
+  makeholiday list --json
+")]
     List {
         /// Sort by field (repeatable for multi-key sort, e.g. --sort start --sort summary)
         #[arg(long, value_enum)]
@@ -129,6 +157,19 @@ pub enum Commands {
         json: bool,
     },
     /// Edit an existing event in place by 1-based index
+    #[command(long_about = "\
+Patch a single event identified by its 1-based index (look it up with `makeholiday list`).
+Only the flags you pass are changed; everything else stays. Moving --start without
+--end preserves the event's duration. Use --category-clear / --icon-clear to drop
+those fields without setting a new value.
+
+Examples:
+  makeholiday edit 1 --summary 元日（新名称）
+  makeholiday edit 2 --start 2027-12-29
+  makeholiday edit 3 --busystatus oof --class private
+  makeholiday edit 4 --category-clear --category 仕事 --category 出張
+  makeholiday edit 5 --icon-clear
+")]
     Edit {
         /// 1-based event index to edit (look up via `makeholiday list`)
         index: usize,
@@ -164,8 +205,27 @@ pub enum Commands {
         icon_clear: bool,
     },
     /// List available preset icon names
+    #[command(long_about = "\
+Print the names of the bundled preset icons that can be passed to --icon
+on `add` or `edit`. The icon name is recorded as the X-MAKEHOLIDAY-ICON
+property on the event and appears in `list` output as `[name]`.
+
+Example:
+  makeholiday icons
+")]
     Icons,
     /// Remove an event from the calendar
+    #[command(long_about = "\
+Delete one or more events from the calendar. Provide a 1-based index expression,
+a --summary match, or run without arguments for an interactive picker (requires a TTY
+or --interactive).
+
+Examples:
+  makeholiday remove 4
+  makeholiday remove 1,3-5,8
+  makeholiday remove --summary 元日
+  makeholiday --interactive remove
+")]
     Remove {
         /// Index specifier: "4", "4,6", "6-10", "1,3-5,8" (interactive if omitted)
         target: Option<String>,
