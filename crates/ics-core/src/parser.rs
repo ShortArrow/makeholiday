@@ -1,7 +1,8 @@
+use crate::error::{Error, Result};
 use crate::event::{BusyStatus, EventClass, VEvent};
 use chrono::{NaiveDate, NaiveDateTime};
 
-pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
+pub fn parse_events(content: &str) -> Result<Vec<VEvent>> {
     let mut events = Vec::new();
     let normalized = content.replace("\r\n", "\n");
     let mut in_event = false;
@@ -29,9 +30,9 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
             categories.clear();
             icon = None;
         } else if line == "END:VEVENT" && in_event {
-            let stamp = dtstamp.ok_or("VEVENT missing DTSTAMP")?;
-            let start = dtstart.ok_or("VEVENT missing DTSTART")?;
-            let end = dtend.ok_or("VEVENT missing DTEND")?;
+            let stamp = dtstamp.ok_or_else(|| Error::parse("VEVENT missing DTSTAMP"))?;
+            let start = dtstart.ok_or_else(|| Error::parse("VEVENT missing DTSTART"))?;
+            let end = dtend.ok_or_else(|| Error::parse("VEVENT missing DTEND"))?;
             events.push(VEvent {
                 uid: uid.clone(),
                 dtstamp: stamp,
@@ -50,17 +51,17 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
             } else if let Some(val) = line.strip_prefix("DTSTAMP:") {
                 dtstamp = Some(
                     NaiveDateTime::parse_from_str(val, "%Y%m%dT%H%M%SZ")
-                        .map_err(|e| format!("Invalid DTSTAMP: {e}"))?,
+                        .map_err(|e| Error::parse(format!("Invalid DTSTAMP: {e}")))?,
                 );
             } else if let Some(val) = line.strip_prefix("DTSTART;VALUE=DATE:") {
                 dtstart = Some(
                     NaiveDate::parse_from_str(val, "%Y%m%d")
-                        .map_err(|e| format!("Invalid DTSTART: {e}"))?,
+                        .map_err(|e| Error::parse(format!("Invalid DTSTART: {e}")))?,
                 );
             } else if let Some(val) = line.strip_prefix("DTEND;VALUE=DATE:") {
                 dtend = Some(
                     NaiveDate::parse_from_str(val, "%Y%m%d")
-                        .map_err(|e| format!("Invalid DTEND: {e}"))?,
+                        .map_err(|e| Error::parse(format!("Invalid DTEND: {e}")))?,
                 );
             } else if let Some(val) = line.strip_prefix("SUMMARY:") {
                 summary = val.to_string();
@@ -82,7 +83,7 @@ pub fn parse_events(content: &str) -> Result<Vec<VEvent>, String> {
 
 /// Parse index specifier: "3", "1,4,6", "3-7", "1,3-5,8"
 /// Returns sorted, deduplicated 1-based indices.
-pub fn parse_indices(input: &str, max: usize) -> Result<Vec<usize>, String> {
+pub fn parse_indices(input: &str, max: usize) -> Result<Vec<usize>> {
     let mut indices = Vec::new();
     for part in input.split(',') {
         let part = part.trim();
@@ -90,24 +91,24 @@ pub fn parse_indices(input: &str, max: usize) -> Result<Vec<usize>, String> {
             let s: usize = start
                 .trim()
                 .parse()
-                .map_err(|_| format!("Invalid number: {start}"))?;
+                .map_err(|_| Error::parse(format!("Invalid number: {start}")))?;
             let e: usize = end
                 .trim()
                 .parse()
-                .map_err(|_| format!("Invalid number: {end}"))?;
+                .map_err(|_| Error::parse(format!("Invalid number: {end}")))?;
             if s == 0 || e == 0 || s > max || e > max {
-                return Err(format!("Index out of range (1-{max})"));
+                return Err(Error::parse(format!("Index out of range (1-{max})")));
             }
             if s > e {
-                return Err(format!("Invalid range: {s}-{e}"));
+                return Err(Error::parse(format!("Invalid range: {s}-{e}")));
             }
             indices.extend(s..=e);
         } else {
             let idx: usize = part
                 .parse()
-                .map_err(|_| format!("Invalid number: {part}"))?;
+                .map_err(|_| Error::parse(format!("Invalid number: {part}")))?;
             if idx == 0 || idx > max {
-                return Err(format!("Index {idx} out of range (1-{max})"));
+                return Err(Error::parse(format!("Index {idx} out of range (1-{max})")));
             }
             indices.push(idx);
         }

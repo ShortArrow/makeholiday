@@ -11,7 +11,8 @@
 ### 変更
 - [ADR-017](design/017-workspace-and-ics-core-crate.md) に従い、リポジトリを Cargo workspace へ再編。`Cargo.toml` は workspace マニフェストに、`makeholiday` バイナリクレートは `crates/makeholiday/` 配下へ移動。挙動変更なし。
 - 空の `crates/ics-core/` ワークスペースメンバを追加（ADR-017 Migration Step 2）。`makeholiday` から path 依存で接続。公開 API はまだ無し。型とパーサは Step 3 で移動。
-- 型モデル（`VEvent`, `BusyStatus`, `EventClass`, `SortKey`）とパーサ・フォーマッタ・クエリヘルパを `crates/makeholiday/src/ics.rs` から `crates/ics-core/src/{event,calendar,parser,query}.rs` に移動（ADR-017 Migration Step 3）。makeholiday は `ics_core` 経由で型を利用するように変更。makeholiday namespace のプリセットアイコン（`PRESET_ICONS`, `format_icons_list`）は新規 `crates/makeholiday/src/icons.rs` に切り出し、`ics-core` には載せない。挙動変更なし。エラー型は `Result<T, String>` のまま、typed `ics_core::Error` は ADR-009/010/012 のレイヤ再構成と一緒に Step 4 で導入。
+- 型モデル（`VEvent`, `BusyStatus`, `EventClass`, `SortKey`）とパーサ・フォーマッタ・クエリヘルパを `crates/makeholiday/src/ics.rs` から `crates/ics-core/src/{event,calendar,parser,query}.rs` に移動（ADR-017 Migration Step 3）。makeholiday は `ics_core` 経由で型を利用するように変更。makeholiday namespace のプリセットアイコン（`PRESET_ICONS`, `format_icons_list`）は新規 `crates/makeholiday/src/icons.rs` に切り出し、`ics-core` には載せない。挙動変更なし。
+- 型付き `ics_core::Error` を導入（ADR-017 §error type relationship）。`parse_events`, `parse_indices`, `insert_event`, `remove_event_by_summary`, `remove_events_by_indices` の返却型を `Result<T, String>` から `Result<T, ics_core::Error>` に変更。`Parse` バリアントは `message` に加えオプショナルな `line` と `property` を持ち、現状の flat parser では None のまま。ADR-019 の lexer ベースパーサが値を埋める。makeholiday/commands.rs では `.map_err(|e| e.to_string())` で一時的にブリッジ。次の migration コミットで `MhError` が入った時点で除去。
 
 ### 追加
 - ドキュメント基盤一式: `README`, `PRD`, `CONTRIBUTING`, `SETUP`, `USAGE`（英語版と日本語版）。

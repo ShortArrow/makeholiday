@@ -102,7 +102,7 @@ pub fn add(
         icon,
     };
 
-    let new_content = ics::insert_event(&content, &event)?;
+    let new_content = ics::insert_event(&content, &event).map_err(|e| e.to_string())?;
     std::fs::write(file, new_content.as_bytes()).map_err(|e| format!("Failed to write: {e}"))?;
 
     let line = ics::format_event_line(&event);
@@ -118,7 +118,7 @@ pub fn list(
 ) -> Result<String, String> {
     let content = std::fs::read_to_string(file)
         .map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
-    let events = ics::parse_events(&content)?;
+    let events = ics::parse_events(&content).map_err(|e| e.to_string())?;
     let events = if sort_keys.is_empty() {
         events
     } else {
@@ -140,7 +140,7 @@ pub fn list(
 pub fn remove(file: &Path, summary: Option<&str>, target: Option<&str>) -> Result<(), String> {
     let content = std::fs::read_to_string(file)
         .map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
-    let events = ics::parse_events(&content)?;
+    let events = ics::parse_events(&content).map_err(|e| e.to_string())?;
 
     let (new_content, removed_desc) = match (summary, target) {
         (Some(_), Some(_)) => {
@@ -156,16 +156,22 @@ pub fn remove(file: &Path, summary: Option<&str>, target: Option<&str>) -> Resul
                 .map(|e| ics::format_event_line(e))
                 .collect::<Vec<_>>()
                 .join(", ");
-            (ics::remove_event_by_summary(&content, s)?, desc)
+            (
+                ics::remove_event_by_summary(&content, s).map_err(|e| e.to_string())?,
+                desc,
+            )
         }
         (None, Some(spec)) => {
-            let indices = ics::parse_indices(spec, events.len())?;
+            let indices = ics::parse_indices(spec, events.len()).map_err(|e| e.to_string())?;
             let desc = indices
                 .iter()
                 .map(|&i| ics::format_event_line(&events[i - 1]))
                 .collect::<Vec<_>>()
                 .join(", ");
-            (ics::remove_events_by_indices(&content, &indices)?, desc)
+            (
+                ics::remove_events_by_indices(&content, &indices).map_err(|e| e.to_string())?,
+                desc,
+            )
         }
         (None, None) => {
             // Interactive mode
@@ -185,13 +191,16 @@ pub fn remove(file: &Path, summary: Option<&str>, target: Option<&str>) -> Resul
             if trimmed == "q" || trimmed.is_empty() {
                 return Ok(());
             }
-            let indices = ics::parse_indices(trimmed, events.len())?;
+            let indices = ics::parse_indices(trimmed, events.len()).map_err(|e| e.to_string())?;
             let desc = indices
                 .iter()
                 .map(|&i| ics::format_event_line(&events[i - 1]))
                 .collect::<Vec<_>>()
                 .join(", ");
-            (ics::remove_events_by_indices(&content, &indices)?, desc)
+            (
+                ics::remove_events_by_indices(&content, &indices).map_err(|e| e.to_string())?,
+                desc,
+            )
         }
     };
 

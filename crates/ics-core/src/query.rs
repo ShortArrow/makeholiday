@@ -1,4 +1,5 @@
 use crate::calendar::format_calendar;
+use crate::error::{Error, Result};
 use crate::event::VEvent;
 use crate::parser::parse_events;
 
@@ -26,22 +27,27 @@ pub fn sort_events(events: &[VEvent], keys: &[SortKey], descending: bool) -> Vec
     sorted
 }
 
-pub fn remove_event_by_summary(content: &str, summary: &str) -> Result<String, String> {
+pub fn remove_event_by_summary(content: &str, summary: &str) -> Result<String> {
     let events = parse_events(content)?;
     let remaining: Vec<_> = events.iter().filter(|e| e.summary != summary).collect();
     if remaining.len() == events.len() {
-        return Err(format!("No event found with summary: {summary}"));
+        return Err(Error::parse(format!(
+            "No event found with summary: {summary}"
+        )));
     }
     Ok(format_calendar(
         &remaining.into_iter().cloned().collect::<Vec<_>>(),
     ))
 }
 
-pub fn remove_events_by_indices(content: &str, indices: &[usize]) -> Result<String, String> {
+pub fn remove_events_by_indices(content: &str, indices: &[usize]) -> Result<String> {
     let events = parse_events(content)?;
     for &idx in indices {
         if idx == 0 || idx > events.len() {
-            return Err(format!("Index {idx} out of range (1-{})", events.len()));
+            return Err(Error::parse(format!(
+                "Index {idx} out of range (1-{})",
+                events.len()
+            )));
         }
     }
     let remaining: Vec<_> = events

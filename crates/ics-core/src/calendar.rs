@@ -1,3 +1,4 @@
+use crate::error::{Error, Result};
 use crate::event::VEvent;
 
 pub fn vcalendar_header() -> String {
@@ -46,11 +47,11 @@ pub fn format_calendar(events: &[VEvent]) -> String {
     out
 }
 
-pub fn insert_event(content: &str, event: &VEvent) -> Result<String, String> {
+pub fn insert_event(content: &str, event: &VEvent) -> Result<String> {
     let footer = "END:VCALENDAR";
     let pos = content
         .find(footer)
-        .ok_or_else(|| "Invalid ICS: missing END:VCALENDAR".to_string())?;
+        .ok_or_else(|| Error::parse("Invalid ICS: missing END:VCALENDAR"))?;
     let mut result = content[..pos].to_string();
     result.push_str(&format_vevent(event));
     result.push_str(&content[pos..]);
