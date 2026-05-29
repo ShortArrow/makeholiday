@@ -11,7 +11,7 @@
 
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -71,7 +71,7 @@ fn main() -> ExitCode {
     ExitCode::from(exit_code_for(&raw, cli.warnings_as_errors) as u8)
 }
 
-fn read_source(path: &PathBuf) -> std::io::Result<String> {
+fn read_source(path: &Path) -> std::io::Result<String> {
     if path.to_str() == Some("-") {
         let mut buf = String::new();
         std::io::stdin().read_to_string(&mut buf)?;
@@ -81,7 +81,7 @@ fn read_source(path: &PathBuf) -> std::io::Result<String> {
     }
 }
 
-fn report_human(path: &PathBuf, diag: &Diagnostic) {
+fn report_human(path: &Path, diag: &Diagnostic) {
     let severity = match diag.severity {
         Severity::Info => "info",
         Severity::Warning => "warning",
@@ -91,5 +91,8 @@ fn report_human(path: &PathBuf, diag: &Diagnostic) {
         Some(n) => format!("{}:{}", path.display(), n),
         None => format!("{}", path.display()),
     };
-    eprintln!("{}: {}: [{}] {}", location, severity, diag.rule, diag.message);
+    eprintln!(
+        "{}: {}: [{}] {}",
+        location, severity, diag.rule, diag.message
+    );
 }

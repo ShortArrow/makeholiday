@@ -44,10 +44,7 @@ impl Rule for RequiredUid {
                             Diagnostic::new(
                                 self.id(),
                                 self.default_severity(),
-                                format!(
-                                    "VEVENT #{} has an empty UID (RFC 5545 §3.6.1)",
-                                    idx + 1
-                                ),
+                                format!("VEVENT #{} has an empty UID (RFC 5545 §3.6.1)", idx + 1),
                             )
                             .with_line(scan.begin_line),
                         );
@@ -130,8 +127,8 @@ impl Rule for DuplicateSummary {
 
 #[cfg(test)]
 mod tests {
-    use crate::lint;
     use crate::Severity;
+    use crate::lint;
 
     fn vevent_with(properties: &str) -> String {
         let mut s = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//x//y\r\n");
