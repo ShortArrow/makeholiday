@@ -16,7 +16,7 @@ pub mod vcalendar;
 
 pub use calendar::{format_calendar, format_vevent};
 pub use error::{Error, Result};
-pub use event::{EventClass, Transp, VEvent, format_event_line};
+pub use event::{EventClass, Transp, VEvent};
 pub use parser::{parse_calendar, parse_indices};
 pub use profile::microsoft;
 pub use query::{SortKey, remove_event_by_summary, remove_events_by_indices, sort_events};
@@ -50,7 +50,6 @@ pub(crate) mod test_helpers {
             transp: None,
             class: None,
             categories: vec![],
-            icon: None,
             microsoft: None,
             unknown: vec![],
             unrecognized_components: vec![],

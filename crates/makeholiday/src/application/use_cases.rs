@@ -7,7 +7,9 @@ use chrono::NaiveDate;
 use ics_core::{self as ics, VEvent};
 
 use crate::application::ports::CalendarRepository;
+use crate::display::format_event_line;
 use crate::error::{MhError, Result};
+use crate::icons;
 
 pub fn init<R: CalendarRepository>(repo: &R) -> Result<()> {
     repo.create()
@@ -101,7 +103,7 @@ pub fn add<R: CalendarRepository>(
     let content = repo.load()?;
     let mut cal = ics::parse_calendar(&content)?;
 
-    let event = VEvent {
+    let mut event = VEvent {
         uid: uuid::Uuid::new_v4().to_string(),
         dtstamp: chrono::Utc::now().naive_utc(),
         dtstart: start,
@@ -110,18 +112,20 @@ pub fn add<R: CalendarRepository>(
         transp: None,
         class,
         categories,
-        icon,
         microsoft: Some(ics::microsoft::EventExtensions {
             busystatus: Some(busystatus),
         }),
         unknown: vec![],
         unrecognized_components: vec![],
     };
+    if let Some(icon_name) = icon {
+        icons::write_icon(&mut event, icon_name);
+    }
 
     cal.events.push(event.clone());
     repo.save(&ics::format_calendar(&cal))?;
 
-    let line = ics::format_event_line(&event);
+    let line = format_event_line(&event);
     eprintln!("Added: {line}");
     Ok(())
 }
@@ -146,7 +150,7 @@ pub fn list<R: CalendarRepository>(
         let output = events
             .iter()
             .enumerate()
-            .map(|(i, e)| format!("{}: {}", i + 1, ics::format_event_line(e)))
+            .map(|(i, e)| format!("{}: {}", i + 1, format_event_line(e)))
             .collect::<Vec<_>>()
             .join("\n");
         Ok(output)
@@ -177,7 +181,7 @@ pub fn remove<R: CalendarRepository>(
             }
             let desc = removed
                 .iter()
-                .map(|e| ics::format_event_line(e))
+                .map(|e| format_event_line(e))
                 .collect::<Vec<_>>()
                 .join(", ");
             (ics::remove_event_by_summary(&cal, s)?, desc)
@@ -186,7 +190,7 @@ pub fn remove<R: CalendarRepository>(
             let indices = ics::parse_indices(spec, events.len())?;
             let desc = indices
                 .iter()
-                .map(|&i| ics::format_event_line(&events[i - 1]))
+                .map(|&i| format_event_line(&events[i - 1]))
                 .collect::<Vec<_>>()
                 .join(", ");
             (ics::remove_events_by_indices(&cal, &indices)?, desc)
@@ -196,7 +200,7 @@ pub fn remove<R: CalendarRepository>(
                 return Err(MhError::NotFound("No events to remove".to_string()));
             }
             for (i, e) in events.iter().enumerate() {
-                eprintln!("{}: {}", i + 1, ics::format_event_line(e));
+                eprintln!("{}: {}", i + 1, format_event_line(e));
             }
             eprint!("Remove # (or 'q' to cancel): ");
             let mut line = String::new();
@@ -211,7 +215,7 @@ pub fn remove<R: CalendarRepository>(
             let indices = ics::parse_indices(trimmed, events.len())?;
             let desc = indices
                 .iter()
-                .map(|&i| ics::format_event_line(&events[i - 1]))
+                .map(|&i| format_event_line(&events[i - 1]))
                 .collect::<Vec<_>>()
                 .join(", ");
             (ics::remove_events_by_indices(&cal, &indices)?, desc)

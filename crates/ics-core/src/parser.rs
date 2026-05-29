@@ -102,7 +102,6 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
     let mut ms_busystatus: Option<MsBusyStatus> = None;
     let mut class: Option<EventClass> = None;
     let mut categories: Vec<String> = Vec::new();
-    let mut icon: Option<String> = None;
     let mut unknown: Vec<RawProperty> = Vec::new();
     let mut unknown_index: u32 = 0;
     let mut unrecognized_components: Vec<RawComponent> = Vec::new();
@@ -124,7 +123,6 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
                     transp,
                     class,
                     categories,
-                    icon,
                     microsoft: ms_busystatus.map(|b| microsoft::EventExtensions {
                         busystatus: Some(b),
                     }),
@@ -169,8 +167,6 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
             class = EventClass::from_ics(val);
         } else if let Some(val) = line.strip_prefix("CATEGORIES:") {
             categories = val.split(',').map(|s| s.trim().to_string()).collect();
-        } else if let Some(val) = line.strip_prefix("X-MAKEHOLIDAY-ICON:") {
-            icon = Some(val.to_string());
         } else if line.starts_with("X-") {
             if let Some(prop) = parse_raw_property(line, unknown_index + 1) {
                 unknown.push(prop);
@@ -454,12 +450,20 @@ mod tests {
     }
 
     #[test]
-    fn typed_x_microsoft_and_x_makeholiday_stay_typed_not_in_unknown() {
+    fn x_microsoft_stays_typed_x_makeholiday_lands_in_unknown() {
+        // Post-Step-5: X-MAKEHOLIDAY-ICON is no longer specially handled
+        // in ics-core; it round-trips through VEvent.unknown like any
+        // other X-* property. Read/write is the makeholiday crate's job.
         let mut event = make_event("rt-typed", (2026, 4, 29), (2026, 4, 30), "昭和の日");
         event.microsoft = Some(MsExtensions {
             busystatus: Some(MsBusyStatus::Oof),
         });
-        event.icon = Some("flag".to_string());
+        event.unknown.push(RawProperty {
+            name: "X-MAKEHOLIDAY-ICON".to_string(),
+            params: vec![],
+            value: "flag".to_string(),
+            source_index: 1,
+        });
         let cal = format_calendar(&vcal(vec![event.clone()]));
         let parsed = parse_calendar(&cal).unwrap();
         assert_eq!(
@@ -469,8 +473,12 @@ mod tests {
                 .and_then(|m| m.busystatus),
             Some(MsBusyStatus::Oof)
         );
-        assert_eq!(parsed.events[0].icon.as_deref(), Some("flag"));
-        assert!(parsed.events[0].unknown.is_empty());
+        let icon = parsed.events[0]
+            .unknown
+            .iter()
+            .find(|p| p.name == "X-MAKEHOLIDAY-ICON")
+            .map(|p| p.value.as_str());
+        assert_eq!(icon, Some("flag"));
     }
 
     #[test]

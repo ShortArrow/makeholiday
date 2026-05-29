@@ -31,9 +31,6 @@ pub fn format_vevent(event: &VEvent) -> String {
     if !event.categories.is_empty() {
         lines.push(format!("CATEGORIES:{}", event.categories.join(",")));
     }
-    if let Some(ref icon) = event.icon {
-        lines.push(format!("X-MAKEHOLIDAY-ICON:{icon}"));
-    }
     // Round-trip unknown properties at the tail of the component, sorted
     // by their captured source_index per ADR-018.
     let mut unknown_sorted: Vec<&RawProperty> = event.unknown.iter().collect();
@@ -179,18 +176,15 @@ mod tests {
     }
 
     #[test]
-    fn format_and_parse_categories_and_icon() {
+    fn format_and_parse_categories() {
         let mut event = make_event("cat-1", (2026, 6, 15), (2026, 6, 16), "出張");
         event.categories = vec!["仕事".to_string(), "出張".to_string()];
-        event.icon = Some("airplane".to_string());
         let output = format_vevent(&event);
         assert!(output.contains("CATEGORIES:仕事,出張\r\n"));
-        assert!(output.contains("X-MAKEHOLIDAY-ICON:airplane\r\n"));
 
         let cal = format_calendar(&vcal(vec![event.clone()]));
         let parsed = parse_calendar(&cal).unwrap();
         assert_eq!(parsed.events[0].categories, vec!["仕事", "出張"]);
-        assert_eq!(parsed.events[0].icon, Some("airplane".to_string()));
     }
 
     #[test]
