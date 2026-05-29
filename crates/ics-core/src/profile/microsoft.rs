@@ -14,7 +14,7 @@ pub const PREFIXES: &[&str] = &["X-MICROSOFT-CDO-", "X-MICROSOFT-"];
 
 /// True if `name` starts with any of this profile's registered prefixes.
 pub fn owns_property(name: &str) -> bool {
-    PREFIXES.iter().any(|p| name.starts_with(p))
+    super::matches_prefixes(name, PREFIXES)
 }
 
 /// Microsoft's `X-MICROSOFT-CDO-BUSYSTATUS` value space.

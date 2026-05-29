@@ -25,15 +25,16 @@ pub fn format_vevent(event: &VEvent) -> String {
     if let Some(bs) = ms_busystatus {
         lines.push(format!("X-MICROSOFT-CDO-BUSYSTATUS:{}", bs.cdo_value()));
     }
-    // Microsoft vendor-bundle untyped properties, sorted by source_index.
-    // Emitted right after the typed Microsoft fields per ADR-018 §3
-    // ("vendor bundle fields emit after RFC, in module declaration order").
+    // Vendor-bundle untyped properties, sorted by source_index within
+    // each bucket. Buckets emit in module declaration order per ADR-018 §3.
     if let Some(ms) = &event.microsoft {
-        let mut ms_unrecognized_sorted: Vec<&RawProperty> = ms.unrecognized.iter().collect();
-        ms_unrecognized_sorted.sort_by_key(|p| p.source_index);
-        for p in ms_unrecognized_sorted {
-            lines.push(format_raw_property(p));
-        }
+        emit_unrecognized(&ms.unrecognized, &mut lines);
+    }
+    if let Some(g) = &event.google {
+        emit_unrecognized(&g.unrecognized, &mut lines);
+    }
+    if let Some(ic) = &event.icloud {
+        emit_unrecognized(&ic.unrecognized, &mut lines);
     }
     if let Some(class) = event.class {
         lines.push(format!("CLASS:{}", class.ics_value()));
@@ -43,11 +44,7 @@ pub fn format_vevent(event: &VEvent) -> String {
     }
     // Round-trip unknown properties at the tail of the component, sorted
     // by their captured source_index per ADR-018.
-    let mut unknown_sorted: Vec<&RawProperty> = event.unknown.iter().collect();
-    unknown_sorted.sort_by_key(|p| p.source_index);
-    for p in unknown_sorted {
-        lines.push(format_raw_property(p));
-    }
+    emit_unrecognized(&event.unknown, &mut lines);
     // Nested unrecognized components (VALARM, ...) preserved verbatim.
     for comp in &event.unrecognized_components {
         format_raw_component(comp, &mut lines);
@@ -86,6 +83,15 @@ pub fn format_calendar(cal: &VCalendar) -> String {
     }
     out.push_str("END:VCALENDAR\r\n");
     out
+}
+
+/// Sort `bucket` by `source_index` and append each as a wire line.
+fn emit_unrecognized(bucket: &[RawProperty], out: &mut Vec<String>) {
+    let mut sorted: Vec<&RawProperty> = bucket.iter().collect();
+    sorted.sort_by_key(|p| p.source_index);
+    for p in sorted {
+        out.push(format_raw_property(p));
+    }
 }
 
 /// Emit a `RawProperty` in `NAME[;PARAM=VALUE...]:VALUE` form.

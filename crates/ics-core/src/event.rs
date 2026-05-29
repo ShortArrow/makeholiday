@@ -1,4 +1,4 @@
-use crate::profile::microsoft;
+use crate::profile::{google, icloud, microsoft};
 use crate::raw::{RawComponent, RawProperty};
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::Serialize;
@@ -77,6 +77,16 @@ pub struct VEvent {
     /// lives in `microsoft.busystatus` after ADR-001 Migration Step 4.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub microsoft: Option<microsoft::EventExtensions>,
+
+    /// Google calendar event extension bundle. Step 7 skeleton: no typed
+    /// fields yet; all matched properties land in `google.unrecognized`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub google: Option<google::EventExtensions>,
+
+    /// Apple / iCloud event extension bundle. Step 7 skeleton: no typed
+    /// fields yet; all matched properties land in `icloud.unrecognized`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icloud: Option<icloud::EventExtensions>,
 
     /// Properties matching no registered vendor prefix (ADR-001 rule 4).
     #[serde(skip_serializing_if = "Vec::is_empty")]

@@ -18,7 +18,7 @@ pub use calendar::{format_calendar, format_vevent};
 pub use error::{Error, Result};
 pub use event::{EventClass, Transp, VEvent};
 pub use parser::{parse_calendar, parse_indices};
-pub use profile::microsoft;
+pub use profile::{google, icloud, microsoft};
 pub use query::{SortKey, remove_event_by_summary, remove_events_by_indices, sort_events};
 pub use raw::{RawComponent, RawProperty};
 pub use vcalendar::VCalendar;
@@ -51,6 +51,8 @@ pub(crate) mod test_helpers {
             class: None,
             categories: vec![],
             microsoft: None,
+            google: None,
+            icloud: None,
             unknown: vec![],
             unrecognized_components: vec![],
         }

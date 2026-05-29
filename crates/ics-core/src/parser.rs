@@ -1,6 +1,7 @@
 use crate::error::{Error, Result};
 use crate::event::{EventClass, Transp, VEvent};
-use crate::profile::microsoft::{self, MsBusyStatus};
+use crate::profile::microsoft::MsBusyStatus;
+use crate::profile::{google, icloud, microsoft};
 use crate::raw::{RawComponent, RawProperty};
 use crate::vcalendar::VCalendar;
 use chrono::{NaiveDate, NaiveDateTime};
@@ -104,6 +105,8 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
     let mut categories: Vec<String> = Vec::new();
     let mut unknown: Vec<RawProperty> = Vec::new();
     let mut ms_unrecognized: Vec<RawProperty> = Vec::new();
+    let mut google_unrecognized: Vec<RawProperty> = Vec::new();
+    let mut icloud_unrecognized: Vec<RawProperty> = Vec::new();
     // Monotonic across all X-* properties in this VEVENT regardless of
     // which bucket they land in — preserves source-arrival order for the
     // per-bucket sort the formatter does (ADR-018).
@@ -131,6 +134,20 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
                         Some(microsoft::EventExtensions {
                             busystatus: ms_busystatus,
                             unrecognized: ms_unrecognized,
+                        })
+                    } else {
+                        None
+                    },
+                    google: if !google_unrecognized.is_empty() {
+                        Some(google::EventExtensions {
+                            unrecognized: google_unrecognized,
+                        })
+                    } else {
+                        None
+                    },
+                    icloud: if !icloud_unrecognized.is_empty() {
+                        Some(icloud::EventExtensions {
+                            unrecognized: icloud_unrecognized,
                         })
                     } else {
                         None
@@ -181,6 +198,10 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
             if let Some(prop) = parse_raw_property(line, x_index) {
                 if microsoft::owns_property(&prop.name) {
                     ms_unrecognized.push(prop);
+                } else if google::owns_property(&prop.name) {
+                    google_unrecognized.push(prop);
+                } else if icloud::owns_property(&prop.name) {
+                    icloud_unrecognized.push(prop);
                 } else {
                     unknown.push(prop);
                 }
@@ -741,6 +762,82 @@ mod tests {
         let parsed = parse_calendar(&input).unwrap();
         // No X-MICROSOFT-* input means microsoft bundle is None entirely.
         assert!(parsed.events[0].microsoft.is_none());
+    }
+
+    // ADR-001 Migration Step 7 — google / icloud skeleton routing.
+
+    #[test]
+    fn x_google_prefix_routes_to_google_unrecognized() {
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:s\r\n");
+        input.push_str("X-GOOGLE-CONFERENCEPROPERTIES:foo\r\n");
+        input.push_str("END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        let g = parsed.events[0].google.as_ref().unwrap();
+        assert_eq!(g.unrecognized.len(), 1);
+        assert_eq!(g.unrecognized[0].name, "X-GOOGLE-CONFERENCEPROPERTIES");
+        assert!(parsed.events[0].microsoft.is_none());
+        assert!(parsed.events[0].icloud.is_none());
+        assert!(parsed.events[0].unknown.is_empty());
+    }
+
+    #[test]
+    fn x_apple_and_x_calendarserver_prefixes_route_to_icloud_unrecognized() {
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:s\r\n");
+        input.push_str("X-APPLE-CALENDAR-COLOR:#FF0000\r\n");
+        input.push_str("X-CALENDARSERVER-ACCESS:CONFIDENTIAL\r\n");
+        input.push_str("END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        let ic = parsed.events[0].icloud.as_ref().unwrap();
+        assert_eq!(ic.unrecognized.len(), 2);
+        let names: Vec<_> = ic.unrecognized.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["X-APPLE-CALENDAR-COLOR", "X-CALENDARSERVER-ACCESS"]
+        );
+        assert!(parsed.events[0].google.is_none());
+        assert!(parsed.events[0].unknown.is_empty());
+    }
+
+    #[test]
+    fn all_three_vendor_buckets_round_trip_together() {
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:s\r\n");
+        input.push_str("X-MICROSOFT-CDO-ALLDAYEVENT:TRUE\r\n");
+        input.push_str("X-GOOGLE-X:1\r\n");
+        input.push_str("X-APPLE-Y:2\r\n");
+        input.push_str("X-CUSTOM-Z:3\r\n");
+        input.push_str("END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        let event = &parsed.events[0];
+        assert_eq!(event.microsoft.as_ref().unwrap().unrecognized.len(), 1);
+        assert_eq!(event.google.as_ref().unwrap().unrecognized.len(), 1);
+        assert_eq!(event.icloud.as_ref().unwrap().unrecognized.len(), 1);
+        assert_eq!(event.unknown.len(), 1);
+
+        let cal = format_calendar(&vcal(vec![event.clone()]));
+        let reparsed = parse_calendar(&cal).unwrap();
+        assert_eq!(reparsed.events[0], *event);
+    }
+
+    #[test]
+    fn vendor_bundles_stay_none_when_no_matching_prefix_seen() {
+        let event = make_event("rt-none", (2026, 4, 29), (2026, 4, 30), "s");
+        let cal = format_calendar(&vcal(vec![event]));
+        let parsed = parse_calendar(&cal).unwrap();
+        assert!(parsed.events[0].microsoft.is_none());
+        assert!(parsed.events[0].google.is_none());
+        assert!(parsed.events[0].icloud.is_none());
     }
 
     #[test]

@@ -116,6 +116,8 @@ pub fn add<R: CalendarRepository>(
             busystatus: Some(busystatus),
             unrecognized: vec![],
         }),
+        google: None,
+        icloud: None,
         unknown: vec![],
         unrecognized_components: vec![],
     };

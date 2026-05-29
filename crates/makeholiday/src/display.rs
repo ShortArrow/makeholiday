@@ -52,6 +52,8 @@ mod tests {
             class: None,
             categories: vec![],
             microsoft: None,
+            google: None,
+            icloud: None,
             unknown: vec![],
             unrecognized_components: vec![],
         }
