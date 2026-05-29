@@ -26,7 +26,8 @@ In priority order:
 
 ## 3. Non-Goals
 
-- **Server / service synchronization.** No CalDAV server, no direct integration with Google Calendar API, iCloud Calendar, or Outlook Online. `makeholiday` operates on local `.ics` files.
+Things `makeholiday` will not do, full stop. CalDAV / cloud-service synchronization is *not* on this list — it is staged for v0.2.0 per [§9 Roadmap](#9-roadmap).
+
 - **GUI / WebUI.** No desktop application, no web interface. (A TUI is planned as a sibling binary — see [ADR-022](design/022-tui-front-end-policy.md).)
 - **Non-ICS calendar formats.** Microsoft `.msg`, legacy vCalendar 1.0, proprietary binary calendar formats are out of scope.
 - **Vendor profile conversion.** Translating ICS from one vendor's flavor (Outlook / Google / iCloud) to another's is out of scope. Round-trip preserves the source profile unchanged. See [ADR-023](design/023-no-convert-subcommand.md).
@@ -87,7 +88,7 @@ Items are listed in approximate priority. Acceptance criteria to be expanded as 
 
 Distinct from Non-Goals: these are explicitly *not* committed for any planned release, though some may move into scope later.
 
-- Cloud sync of calendar state between machines.
+- Cloud sync of calendar state between machines. → graduates into v0.2.0 scope alongside CalDAV; see [§9 Roadmap](#9-roadmap).
 - Calendar invitation workflows (iTIP, `REQUEST` / `REPLY` / `CANCEL` method handling).
 - Recurring event expansion to discrete instances (RRULE materialization). RRULE *preservation* on round-trip is in scope; expansion is not.
 - Time zone database bundling. We rely on the system tz database where time zones come into play.
@@ -96,3 +97,39 @@ Distinct from Non-Goals: these are explicitly *not* committed for any planned re
 
 - **TUI front-end launch trigger** — scope and architecture are settled in [ADR-022](design/022-tui-front-end-policy.md); the remaining open question is *when* maintainer judgment says to start.
 - **License of preset icon names / descriptions** — the `PRESET_ICONS` table ships under the project license; revisit if we add SVG / image assets later.
+
+## 9. Roadmap
+
+`makeholiday` evolves in versioned milestones. Each milestone has a clear scope and is delivered as a series of minor releases.
+
+### v0.1.x — ICS Text Operations (current)
+
+The v0.1.x series scopes `makeholiday` as a high-fidelity local ICS file manager. The `ics-core` library aim is to be a typed lingua franca for RFC 5545 plus the major vendor extension dialects.
+
+- Lossless round-trip with typed vendor extensions ([ADR-001](design/001-vendor-extension-typing.md) Migration complete).
+- Parser correctness — RFC 5545 line folding, UTF-8 BOM handling, TEXT escape decode/encode (ADR-019, in progress).
+- Calendar-level extension surface — `X-WR-*` typed promotion, `VCalendar.unknown` bucket.
+- CLI subcommand completeness: `edit`, `search` / `filter`, `import` / `export`.
+- CLI UX polish ([ADR-015](design/015-diagnostic-output.md) `--quiet` / `--interactive`, [ADR-020](design/020-cli-subcommand-policy.md) help-text examples).
+- v0.1.0 freezes the CLI surface contract for SemVer purposes ([ADR-004](design/004-trunk-based-and-semver.md)).
+
+### v0.2.0 — CalDAV / Cloud Backend (next)
+
+The v0.2.0 series extends `makeholiday` into a multi-backend calendar client. The `ics-core` parser and typed model carry over unchanged because every CalDAV response is a syntactically valid `VCALENDAR` blob — the work concentrates on the I/O boundary, not the type model.
+
+- CalDAV client integration with a per-event `Repository` abstraction (`fetch_by_uid`, `put_event`, `delete_by_uid`) alongside the bulk file-level API.
+- ETag-based optimistic locking on event resources.
+- Timed `VEvent` typing — revises [ADR-001](design/001-vendor-extension-typing.md) Rule 9 so that `DTSTART;VALUE=DATE-TIME` events stop falling back to `RawComponent`.
+- `VTimezone` typing alongside the timed-event work.
+- Authentication scaffolding for cloud calendars (CalDAV servers, future provider-specific APIs).
+
+This unblocks the "Cloud sync of calendar state between machines" item currently in [§7 Out of Scope](#7-out-of-scope).
+
+### Beyond v0.2.0
+
+Open. Candidates currently on the watch list:
+
+- VTODO full editing (currently planned as read-only via `list --include-todos`; see [ADR-021](design/021-vtodo-scope.md)).
+- TUI launch (scope settled in [ADR-022](design/022-tui-front-end-policy.md); launch trigger is maintainer judgment per [§8](#8-open-questions)).
+- Additional vendor profile typed fields beyond the current Microsoft `busystatus`.
+- RRULE materialization (recurring-event expansion), per `§7` still out of scope today.

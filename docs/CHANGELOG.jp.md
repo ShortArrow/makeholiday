@@ -9,6 +9,7 @@
 ## [Unreleased]
 
 ### 変更
+- PRD §3 非ゴールから "サーバ / サービス同期" 行を削除。CalDAV / クラウドサービス同期は絶対 Non-Goal ではなく v0.2.0 でバージョンステージングされたスコープインに変更。§7 スコープ外の「マシン間でのカレンダー状態クラウド同期」も新規 §9 を参照するよう更新。§3 リストには ADR で裏付けされた絶対 Non-Goal（GUI/WebUI、ICS 以外形式、ベンダープロファイル変換）のみ残置。
 - [ADR-017](design/017-workspace-and-ics-core-crate.md) に従い、リポジトリを Cargo workspace へ再編。`Cargo.toml` は workspace マニフェストに、`makeholiday` バイナリクレートは `crates/makeholiday/` 配下へ移動。挙動変更なし。
 - 空の `crates/ics-core/` ワークスペースメンバを追加（ADR-017 Migration Step 2）。`makeholiday` から path 依存で接続。公開 API はまだ無し。型とパーサは Step 3 で移動。
 - 型モデル（`VEvent`, `BusyStatus`, `EventClass`, `SortKey`）とパーサ・フォーマッタ・クエリヘルパを `crates/makeholiday/src/ics.rs` から `crates/ics-core/src/{event,calendar,parser,query}.rs` に移動（ADR-017 Migration Step 3）。makeholiday は `ics_core` 経由で型を利用するように変更。makeholiday namespace のプリセットアイコン（`PRESET_ICONS`, `format_icons_list`）は新規 `crates/makeholiday/src/icons.rs` に切り出し、`ics-core` には載せない。挙動変更なし。
@@ -27,6 +28,7 @@
 - `ics_core::VCalendar` と `ics_core::RawComponent` を導入（ADR-001 Migration Step 2）。`VCalendar` は `version`, `prodid`, optional `calscale` / `method`, `events: Vec<VEvent>`, `unrecognized_components: Vec<RawComponent>` を持つ。`VEvent` にも `unrecognized_components` フィールドを追加。パーサはドキュメント全体を `VCalendar` にパースし、`VTIMEZONE`（ネストした `STANDARD` / `DAYLIGHT` を含む）などのカレンダーレベルコンポーネントは `VCalendar.unrecognized_components` に、`VEVENT` 内の `VALARM` は `VEvent.unrecognized_components` に round-trip 保持。公開 API: `parse_calendar`, `format_calendar(&VCalendar)`。`parse_events` は薄い互換ラッパとして残置。クエリヘルパ（`remove_event_by_summary`, `remove_events_by_indices`）は `&VCalendar` を受け取り新しい `VCalendar` を返す形に。makeholiday のユースケースは依然 String ベースの `CalendarRepository` の周りで `parse_calendar` / `format_calendar` を呼ぶブリッジ（typed リポジトリ化は後続コミットで対応）。
 
 ### 追加
+- PRD §9 ロードマップ章を新設し v0.1.x / v0.2.0 マイルストーンを明文化。v0.1.x は現行の「ICS テキスト操作」トラック（ロスレスラウンドトリップ、パーサ正しさ、CLI サブコマンドの揃え）。v0.2.0 は CalDAV / クラウドバックエンド導入、timed `VEvent` 型化（ADR-001 Rule 9 改訂）、per-event リポジトリ抽象。CalDAV 応答も構文的に正当な VCALENDAR ブロブなので ics-core パーサと型モデルは無改修で継承され、v0.2.0 の作業は I/O 境界に集中する。
 - ドキュメント基盤一式: `README`, `PRD`, `CONTRIBUTING`, `SETUP`, `USAGE`（英語版と日本語版）。
 - ADR 000〜023: ADR ポリシー、ベンダー拡張型付けモデル、言語/エディション、デュアルライセンス、Trunk-based + SemVer、Conventional Commits、テスト戦略、ドキュメント言語ポリシー、MSRV、モジュール階層、lib/main 分離、I/O 境界 + リポジトリパターン、エラーハンドリング、依存ポリシー、CI/CD プラットフォーム、診断出力、設定ポリシー、ワークスペース + `ics-core` クレート、ラウンドトリップ戦略、パーサ実装、CLI サブコマンドポリシー、VTODO スコープ、TUI フロントエンドポリシー、`convert` サブコマンド非提供決定。
 - [ADR-024](design/024-solo-phase-branching-carve-out.md) — Solo フェーズの間 ADR-004 の feature ブランチ + PR セレモニーを一時停止する例外。`ics-core` のリポジトリ分離、外部コントリビュータの PR、`v1.0.0` タグのいずれかで自動解除。
