@@ -5,12 +5,14 @@ use chrono::NaiveDate;
 
 use ics_core::{self as ics, VEvent};
 
-pub fn init(file: &Path) -> Result<(), String> {
+use crate::error::{MhError, Result};
+
+pub fn init(file: &Path) -> Result<()> {
     if file.exists() {
-        return Err(format!("File already exists: {}", file.display()));
+        return Err(MhError::already_exists(file));
     }
     let content = ics::format_calendar(&[]);
-    std::fs::write(file, content.as_bytes()).map_err(|e| format!("Failed to write: {e}"))
+    std::fs::write(file, content.as_bytes()).map_err(|e| MhError::io(file, e))
 }
 
 fn resolve_add_params(
@@ -19,18 +21,20 @@ fn resolve_add_params(
     end: Option<NaiveDate>,
     reader: &mut dyn BufRead,
     writer: &mut dyn Write,
-) -> Result<(String, NaiveDate, Option<NaiveDate>), String> {
+) -> Result<(String, NaiveDate, Option<NaiveDate>)> {
     let interactive = summary.is_none() || start.is_none();
     let summary = match summary {
         Some(s) => s.to_string(),
         None => {
-            write!(writer, "Summary: ").map_err(|e| e.to_string())?;
-            writer.flush().map_err(|e| e.to_string())?;
+            write!(writer, "Summary: ").map_err(|e| MhError::io("<stdin>", e))?;
+            writer.flush().map_err(|e| MhError::io("<stdin>", e))?;
             let mut line = String::new();
-            reader.read_line(&mut line).map_err(|e| e.to_string())?;
+            reader
+                .read_line(&mut line)
+                .map_err(|e| MhError::io("<stdin>", e))?;
             let trimmed = line.trim().to_string();
             if trimmed.is_empty() {
-                return Err("Summary cannot be empty".to_string());
+                return Err(MhError::InvalidInput("Summary cannot be empty".to_string()));
             }
             trimmed
         }
@@ -38,26 +42,31 @@ fn resolve_add_params(
     let start = match start {
         Some(s) => s,
         None => {
-            write!(writer, "Start date: ").map_err(|e| e.to_string())?;
-            writer.flush().map_err(|e| e.to_string())?;
+            write!(writer, "Start date: ").map_err(|e| MhError::io("<stdin>", e))?;
+            writer.flush().map_err(|e| MhError::io("<stdin>", e))?;
             let mut line = String::new();
-            reader.read_line(&mut line).map_err(|e| e.to_string())?;
-            crate::cli::parse_date(line.trim())?
+            reader
+                .read_line(&mut line)
+                .map_err(|e| MhError::io("<stdin>", e))?;
+            crate::cli::parse_date(line.trim()).map_err(MhError::InvalidInput)?
         }
     };
     let end = match end {
         Some(e) => Some(e),
         None if !interactive => None,
         None => {
-            write!(writer, "End date (empty for single day): ").map_err(|e| e.to_string())?;
-            writer.flush().map_err(|e| e.to_string())?;
+            write!(writer, "End date (empty for single day): ")
+                .map_err(|e| MhError::io("<stdin>", e))?;
+            writer.flush().map_err(|e| MhError::io("<stdin>", e))?;
             let mut line = String::new();
-            reader.read_line(&mut line).map_err(|e| e.to_string())?;
+            reader
+                .read_line(&mut line)
+                .map_err(|e| MhError::io("<stdin>", e))?;
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 None
             } else {
-                Some(crate::cli::parse_date(trimmed)?)
+                Some(crate::cli::parse_date(trimmed).map_err(MhError::InvalidInput)?)
             }
         }
     };
@@ -74,21 +83,24 @@ pub fn add(
     class: Option<ics::EventClass>,
     categories: Vec<String>,
     icon: Option<String>,
-) -> Result<(), String> {
+) -> Result<()> {
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     let mut writer = io::stderr();
     let (summary, start, end) = resolve_add_params(summary, start, end, &mut reader, &mut writer)?;
 
     let dtend = match end {
-        Some(e) if e < start => return Err("--end must not be before --start".to_string()),
+        Some(e) if e < start => {
+            return Err(MhError::InvalidInput(
+                "--end must not be before --start".to_string(),
+            ));
+        }
         Some(e) if e == start => start + chrono::Days::new(1),
         Some(e) => e + chrono::Days::new(1),
         None => start + chrono::Days::new(1),
     };
 
-    let content = std::fs::read_to_string(file)
-        .map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
+    let content = std::fs::read_to_string(file).map_err(|e| MhError::io(file, e))?;
 
     let event = VEvent {
         uid: uuid::Uuid::new_v4().to_string(),
@@ -102,8 +114,8 @@ pub fn add(
         icon,
     };
 
-    let new_content = ics::insert_event(&content, &event).map_err(|e| e.to_string())?;
-    std::fs::write(file, new_content.as_bytes()).map_err(|e| format!("Failed to write: {e}"))?;
+    let new_content = ics::insert_event(&content, &event)?;
+    std::fs::write(file, new_content.as_bytes()).map_err(|e| MhError::io(file, e))?;
 
     let line = ics::format_event_line(&event);
     eprintln!("Added: {line}");
@@ -115,17 +127,17 @@ pub fn list(
     sort_keys: &[ics::SortKey],
     descending: bool,
     json: bool,
-) -> Result<String, String> {
-    let content = std::fs::read_to_string(file)
-        .map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
-    let events = ics::parse_events(&content).map_err(|e| e.to_string())?;
+) -> Result<String> {
+    let content = std::fs::read_to_string(file).map_err(|e| MhError::io(file, e))?;
+    let events = ics::parse_events(&content)?;
     let events = if sort_keys.is_empty() {
         events
     } else {
         ics::sort_events(&events, sort_keys, descending)
     };
     if json {
-        serde_json::to_string_pretty(&events).map_err(|e| format!("JSON error: {e}"))
+        serde_json::to_string_pretty(&events)
+            .map_err(|e| MhError::InvalidInput(format!("JSON error: {e}")))
     } else {
         let output = events
             .iter()
@@ -137,46 +149,43 @@ pub fn list(
     }
 }
 
-pub fn remove(file: &Path, summary: Option<&str>, target: Option<&str>) -> Result<(), String> {
-    let content = std::fs::read_to_string(file)
-        .map_err(|e| format!("Failed to read {}: {e}", file.display()))?;
-    let events = ics::parse_events(&content).map_err(|e| e.to_string())?;
+pub fn remove(file: &Path, summary: Option<&str>, target: Option<&str>) -> Result<()> {
+    let content = std::fs::read_to_string(file).map_err(|e| MhError::io(file, e))?;
+    let events = ics::parse_events(&content)?;
 
     let (new_content, removed_desc) = match (summary, target) {
         (Some(_), Some(_)) => {
-            return Err("Cannot specify both --summary and index target".to_string());
+            return Err(MhError::Conflict(
+                "Cannot specify both --summary and index target".to_string(),
+            ));
         }
         (Some(s), None) => {
             let removed: Vec<_> = events.iter().filter(|e| e.summary == s).collect();
             if removed.is_empty() {
-                return Err(format!("No event found with summary: {s}"));
+                return Err(MhError::NotFound(format!(
+                    "No event found with summary: {s}"
+                )));
             }
             let desc = removed
                 .iter()
                 .map(|e| ics::format_event_line(e))
                 .collect::<Vec<_>>()
                 .join(", ");
-            (
-                ics::remove_event_by_summary(&content, s).map_err(|e| e.to_string())?,
-                desc,
-            )
+            (ics::remove_event_by_summary(&content, s)?, desc)
         }
         (None, Some(spec)) => {
-            let indices = ics::parse_indices(spec, events.len()).map_err(|e| e.to_string())?;
+            let indices = ics::parse_indices(spec, events.len())?;
             let desc = indices
                 .iter()
                 .map(|&i| ics::format_event_line(&events[i - 1]))
                 .collect::<Vec<_>>()
                 .join(", ");
-            (
-                ics::remove_events_by_indices(&content, &indices).map_err(|e| e.to_string())?,
-                desc,
-            )
+            (ics::remove_events_by_indices(&content, &indices)?, desc)
         }
         (None, None) => {
             // Interactive mode
             if events.is_empty() {
-                return Err("No events to remove".to_string());
+                return Err(MhError::NotFound("No events to remove".to_string()));
             }
             for (i, e) in events.iter().enumerate() {
                 eprintln!("{}: {}", i + 1, ics::format_event_line(e));
@@ -186,25 +195,22 @@ pub fn remove(file: &Path, summary: Option<&str>, target: Option<&str>) -> Resul
             io::stdin()
                 .lock()
                 .read_line(&mut line)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| MhError::io("<stdin>", e))?;
             let trimmed = line.trim();
             if trimmed == "q" || trimmed.is_empty() {
                 return Ok(());
             }
-            let indices = ics::parse_indices(trimmed, events.len()).map_err(|e| e.to_string())?;
+            let indices = ics::parse_indices(trimmed, events.len())?;
             let desc = indices
                 .iter()
                 .map(|&i| ics::format_event_line(&events[i - 1]))
                 .collect::<Vec<_>>()
                 .join(", ");
-            (
-                ics::remove_events_by_indices(&content, &indices).map_err(|e| e.to_string())?,
-                desc,
-            )
+            (ics::remove_events_by_indices(&content, &indices)?, desc)
         }
     };
 
-    std::fs::write(file, new_content.as_bytes()).map_err(|e| format!("Failed to write: {e}"))?;
+    std::fs::write(file, new_content.as_bytes()).map_err(|e| MhError::io(file, e))?;
     eprintln!("Removed: {removed_desc}");
     Ok(())
 }
@@ -233,8 +239,7 @@ mod tests {
         let path = temp_file(&dir, "test.ics");
         init(&path).unwrap();
         let result = init(&path);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("already exists"));
+        assert!(matches!(result, Err(MhError::AlreadyExists { .. })));
     }
 
     fn add_free(path: &std::path::Path, summary: &str, start: NaiveDate, end: Option<NaiveDate>) {
@@ -328,7 +333,7 @@ mod tests {
             vec![],
             None,
         );
-        assert!(result.is_err());
+        assert!(matches!(result, Err(MhError::InvalidInput(_))));
     }
 
     #[test]

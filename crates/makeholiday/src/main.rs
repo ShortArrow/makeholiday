@@ -1,9 +1,7 @@
-mod cli;
-mod commands;
-mod icons;
-
 use clap::Parser;
-use cli::{Cli, Commands};
+
+use makeholiday::cli::{Cli, Commands};
+use makeholiday::{commands, icons};
 
 fn main() {
     let cli = Cli::parse();
