@@ -1,3 +1,4 @@
+use crate::raw::RawProperty;
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::Serialize;
 
@@ -89,6 +90,12 @@ pub struct VEvent {
     // so use sites don't break before the typed-extension restructure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+
+    /// Properties matching no registered vendor prefix (ADR-001 rule 4).
+    /// Includes both the property name and its parameters; round-tripped
+    /// per ADR-018 in `source_index` order at the tail of the component.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unknown: Vec<RawProperty>,
 }
 
 fn serialize_date<S: serde::Serializer>(date: &NaiveDate, s: S) -> Result<S::Ok, S::Error> {

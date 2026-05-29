@@ -110,6 +110,7 @@ pub fn add<R: CalendarRepository>(
         class,
         categories,
         icon,
+        unknown: vec![],
     };
 
     let new_content = ics::insert_event(&content, &event)?;

@@ -18,6 +18,7 @@
 - `CalendarRepository` ポート（ADR-011）を `application::ports` に、ディスク実装 `FileCalendarRepository` を `infrastructure::file_calendar_repository` に新設。書き込みは `tempfile::NamedTempFile` + `persist` / `persist_noclobber` で原子化。プロセス中断で半端なファイルが残る可能性を排除。`tempfile = "3"` は `[dev-dependencies]` から `[dependencies]` へ移動。
 - 旧 `commands.rs` のユースケースを `application::use_cases` に切り出し（ADR-009/017）。各ユースケースは `&Path` ではなく `&impl CalendarRepository` を受け取り、ファイル/パスの関心は Composition Root に集約。`commands.rs` 削除、9 件のテストは `use_cases.rs` に移動してリポジトリ抽象を検証。
 - `cli.rs` を `presentation/cli.rs` に再配置（ADR-009 プレゼンテーション層）。`parse_date` を `cli.rs` から新規 `crate::input` モジュールへ抽出し、プレゼンテーション層（clap `value_parser`）とアプリケーション層（対話プロンプト）が層越境せずに共用できるよう変更。
+- `ics_core::RawProperty` と `VEvent.unknown: Vec<RawProperty>` フィールドを導入（ADR-001 Migration Step 1）。パーサは登録済みベンダー prefix にマッチしない `X-*` プロパティを破棄せず取り込むようになり、フォーマッタは `source_index` 順にコンポーネント末尾へ出力（ADR-018 準拠）。`LANG=en` や `LANG="ja-JP"` のような params も保持、プロパティ名と param キーは UPPERCASE 正規化。既存の typed `X-*` 2 種（`X-MICROSOFT-CDO-BUSYSTATUS`, `X-MAKEHOLIDAY-ICON`）は引き続き型付き処理で `unknown` には重複しない（分離は Step 4/5）。
 
 ### 追加
 - ドキュメント基盤一式: `README`, `PRD`, `CONTRIBUTING`, `SETUP`, `USAGE`（英語版と日本語版）。

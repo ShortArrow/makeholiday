@@ -1,5 +1,6 @@
 use crate::error::{Error, Result};
 use crate::event::VEvent;
+use crate::raw::RawProperty;
 
 pub fn vcalendar_header() -> String {
     "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//makeholiday//EN\r\n".to_string()
@@ -32,6 +33,13 @@ pub fn format_vevent(event: &VEvent) -> String {
     if let Some(ref icon) = event.icon {
         lines.push(format!("X-MAKEHOLIDAY-ICON:{icon}"));
     }
+    // Round-trip unknown properties at the tail of the component, sorted
+    // by their captured source_index per ADR-018.
+    let mut unknown_sorted: Vec<&RawProperty> = event.unknown.iter().collect();
+    unknown_sorted.sort_by_key(|p| p.source_index);
+    for p in unknown_sorted {
+        lines.push(format_raw_property(p));
+    }
     lines.push("END:VEVENT".to_string());
     let mut out = lines.join("\r\n");
     out.push_str("\r\n");
@@ -44,6 +52,20 @@ pub fn format_calendar(events: &[VEvent]) -> String {
         out.push_str(&format_vevent(event));
     }
     out.push_str(&vcalendar_footer());
+    out
+}
+
+/// Emit a `RawProperty` in `NAME[;PARAM=VALUE...]:VALUE` form.
+fn format_raw_property(p: &RawProperty) -> String {
+    let mut out = p.name.clone();
+    for (k, v) in &p.params {
+        out.push(';');
+        out.push_str(k);
+        out.push('=');
+        out.push_str(v);
+    }
+    out.push(':');
+    out.push_str(&p.value);
     out
 }
 

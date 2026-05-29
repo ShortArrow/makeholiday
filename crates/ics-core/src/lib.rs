@@ -10,6 +10,7 @@ pub mod error;
 pub mod event;
 pub mod parser;
 pub mod query;
+pub mod raw;
 
 pub use calendar::{
     format_calendar, format_vevent, insert_event, vcalendar_footer, vcalendar_header,
@@ -18,6 +19,7 @@ pub use error::{Error, Result};
 pub use event::{BusyStatus, EventClass, VEvent, format_event_line};
 pub use parser::{parse_events, parse_indices};
 pub use query::{SortKey, remove_event_by_summary, remove_events_by_indices, sort_events};
+pub use raw::RawProperty;
 
 #[cfg(test)]
 pub(crate) mod test_helpers {
@@ -48,6 +50,7 @@ pub(crate) mod test_helpers {
             class: None,
             categories: vec![],
             icon: None,
+            unknown: vec![],
         }
     }
 }
