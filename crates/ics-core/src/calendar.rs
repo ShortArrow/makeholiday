@@ -1,4 +1,5 @@
 use crate::event::VEvent;
+use crate::parser::escape;
 use crate::raw::{RawComponent, RawProperty};
 use crate::vcalendar::VCalendar;
 
@@ -17,7 +18,7 @@ pub fn format_vevent(event: &VEvent) -> String {
         format!("DTSTAMP:{}", event.dtstamp.format("%Y%m%dT%H%M%SZ")),
         format!("DTSTART;VALUE=DATE:{}", event.dtstart.format("%Y%m%d")),
         format!("DTEND;VALUE=DATE:{}", event.dtend.format("%Y%m%d")),
-        format!("SUMMARY:{}", event.summary),
+        format!("SUMMARY:{}", escape::encode_text(&event.summary)),
     ];
     if let Some(v) = transp_value {
         lines.push(format!("TRANSP:{v}"));
@@ -40,7 +41,10 @@ pub fn format_vevent(event: &VEvent) -> String {
         lines.push(format!("CLASS:{}", class.ics_value()));
     }
     if !event.categories.is_empty() {
-        lines.push(format!("CATEGORIES:{}", event.categories.join(",")));
+        lines.push(format!(
+            "CATEGORIES:{}",
+            escape::join_text_list(&event.categories)
+        ));
     }
     // Round-trip unknown properties at the tail of the component, sorted
     // by their captured source_index per ADR-018.

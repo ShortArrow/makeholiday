@@ -1,3 +1,4 @@
+pub mod escape;
 pub mod line;
 pub mod unfold;
 
@@ -201,7 +202,7 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
                             })?);
                     }
                 }
-                "SUMMARY" => summary = ll.value.to_string(),
+                "SUMMARY" => summary = escape::decode_text(ll.value),
                 "TRANSP" => transp = Transp::from_ics(ll.value),
                 "X-MICROSOFT-CDO-BUSYSTATUS" => {
                     if let Some(bs) = MsBusyStatus::from_cdo(ll.value) {
@@ -210,7 +211,10 @@ fn parse_vevent_block(lines: &[&str], start: usize) -> Result<(VEvent, usize)> {
                 }
                 "CLASS" => class = EventClass::from_ics(ll.value),
                 "CATEGORIES" => {
-                    categories = ll.value.split(',').map(|s| s.trim().to_string()).collect();
+                    categories = escape::split_text_list(ll.value)
+                        .into_iter()
+                        .map(|s| s.trim().to_string())
+                        .collect();
                 }
                 name if name.starts_with("X-") => {
                     x_index += 1;
@@ -1008,6 +1012,81 @@ mod tests {
             parsed.events[0].dtstart,
             chrono::NaiveDate::from_ymd_opt(2026, 4, 29).unwrap()
         );
+    }
+
+    // ADR-019 Step 2 — TEXT escape decode/encode applied to typed fields.
+
+    #[test]
+    fn summary_with_comma_round_trips_via_escape() {
+        let mut event = make_event("rt-esc-comma", (2026, 4, 29), (2026, 4, 30), "");
+        event.summary = "Lunch, dinner, snack".to_string();
+        let cal = format_calendar(&vcal(vec![event.clone()]));
+        // Wire form has escaped commas.
+        assert!(cal.contains(r"SUMMARY:Lunch\, dinner\, snack"));
+        let parsed = parse_calendar(&cal).unwrap();
+        // Parsed summary has them decoded back.
+        assert_eq!(parsed.events[0].summary, "Lunch, dinner, snack");
+    }
+
+    #[test]
+    fn summary_with_semicolon_round_trips_via_escape() {
+        let mut event = make_event("rt-esc-semi", (2026, 4, 29), (2026, 4, 30), "");
+        event.summary = "Q1; Q2".to_string();
+        let cal = format_calendar(&vcal(vec![event.clone()]));
+        assert!(cal.contains(r"SUMMARY:Q1\; Q2"));
+        let parsed = parse_calendar(&cal).unwrap();
+        assert_eq!(parsed.events[0].summary, "Q1; Q2");
+    }
+
+    #[test]
+    fn summary_with_newline_round_trips_via_escape() {
+        let mut event = make_event("rt-esc-nl", (2026, 4, 29), (2026, 4, 30), "");
+        event.summary = "Line1\nLine2".to_string();
+        let cal = format_calendar(&vcal(vec![event.clone()]));
+        assert!(cal.contains(r"SUMMARY:Line1\nLine2"));
+        let parsed = parse_calendar(&cal).unwrap();
+        assert_eq!(parsed.events[0].summary, "Line1\nLine2");
+    }
+
+    #[test]
+    fn summary_with_backslash_round_trips_via_escape() {
+        let mut event = make_event("rt-esc-bs", (2026, 4, 29), (2026, 4, 30), "");
+        event.summary = r"path\to\file".to_string();
+        let cal = format_calendar(&vcal(vec![event.clone()]));
+        assert!(cal.contains(r"SUMMARY:path\\to\\file"));
+        let parsed = parse_calendar(&cal).unwrap();
+        assert_eq!(parsed.events[0].summary, r"path\to\file");
+    }
+
+    #[test]
+    fn categories_with_commas_in_items_round_trip() {
+        // An item with a literal comma must survive split + decode.
+        let mut event = make_event("rt-cat-comma", (2026, 4, 29), (2026, 4, 30), "x");
+        event.categories = vec!["work, project A".to_string(), "personal".to_string()];
+        let cal = format_calendar(&vcal(vec![event.clone()]));
+        assert!(cal.contains(r"CATEGORIES:work\, project A,personal"));
+        let parsed = parse_calendar(&cal).unwrap();
+        assert_eq!(parsed.events[0].categories.len(), 2);
+        assert_eq!(parsed.events[0].categories[0], "work, project A");
+        assert_eq!(parsed.events[0].categories[1], "personal");
+    }
+
+    #[test]
+    fn raw_property_value_is_not_escape_decoded() {
+        // RawProperty.value stays raw per ADR-018 — escape interpretation
+        // only applies to typed TEXT fields. An X- property's value
+        // preserves the backslash.
+        let mut input = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//mh//EN\r\n");
+        input.push_str("BEGIN:VEVENT\r\n");
+        input.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        input.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        input.push_str("SUMMARY:s\r\n");
+        input.push_str(r"X-CUSTOM-FOO:value with \,comma");
+        input.push_str("\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        let parsed = parse_calendar(&input).unwrap();
+        let rp = &parsed.events[0].unknown[0];
+        assert_eq!(rp.name, "X-CUSTOM-FOO");
+        assert_eq!(rp.value, r"value with \,comma"); // raw, not decoded
     }
 
     #[test]
