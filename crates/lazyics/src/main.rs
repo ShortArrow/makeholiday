@@ -13,6 +13,8 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use crossterm::event::{self, Event};
+use icscli::application::ports::CalendarRepository;
+use icscli::infrastructure::FileCalendarRepository;
 
 use lazyics::error::{LazyicsError, Result};
 use lazyics::infrastructure::terminal::TerminalGuard;
@@ -46,8 +48,19 @@ fn run() -> Result<()> {
         return Err(LazyicsError::NotATty);
     }
 
+    // Resolve I/O failures (missing file, unreadable file, parse errors)
+    // *before* taking the terminal so the user sees the error on their
+    // shell prompt instead of inside a half-rendered alternate screen.
+    let repo = FileCalendarRepository::new(args.file.clone());
+    if !repo.exists() {
+        return Err(LazyicsError::InvalidArgs(format!(
+            "calendar file not found: {} (run `icscli -f {} init` first, or pass --file <PATH>)",
+            args.file.display(),
+            args.file.display(),
+        )));
+    }
     let file_label = args.file.display().to_string();
-    let mut screen = ListScreen::placeholder(file_label);
+    let mut screen = ListScreen::from_repo(&repo, file_label)?;
 
     let mut guard = TerminalGuard::enter()?;
     event_loop(&mut guard, &mut screen)
