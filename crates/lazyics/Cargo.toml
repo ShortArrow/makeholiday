@@ -1,12 +1,35 @@
 [package]
 name = "lazyics"
-version = "0.0.0"
+version = "0.2.0-dev"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "`lazygit`-inspired terminal UI for browsing and editing iCalendar (RFC 5545) files. Placeholder; first real release planned at v0.2.0 (ADR-025)."
+description = "`lazygit`-inspired terminal UI for browsing and editing iCalendar (RFC 5545) files. Built on ratatui; depends on the `icscli` library for use cases so CLI / TUI behavior cannot diverge."
 readme = "README.md"
 keywords = ["icalendar", "ics", "rfc5545", "tui", "ratatui"]
 categories = ["command-line-utilities"]
+
+[[bin]]
+name = "lazyics"
+path = "src/main.rs"
+
+[lib]
+name = "lazyics"
+path = "src/lib.rs"
+
+[dependencies]
+ics-core = { path = "../ics-core", version = "0.0.0" }
+icscli = { path = "../icscli", version = "0.2.0-dev" }
+ratatui = "0.30"
+crossterm = "0.29"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
+tempfile.workspace = true
