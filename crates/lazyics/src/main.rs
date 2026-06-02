@@ -63,10 +63,14 @@ fn run() -> Result<()> {
     let mut screen = ListScreen::from_repo(&repo, file_label)?;
 
     let mut guard = TerminalGuard::enter()?;
-    event_loop(&mut guard, &mut screen)
+    event_loop(&mut guard, &repo, &mut screen)
 }
 
-fn event_loop(guard: &mut TerminalGuard, screen: &mut ListScreen) -> Result<()> {
+fn event_loop(
+    guard: &mut TerminalGuard,
+    repo: &FileCalendarRepository,
+    screen: &mut ListScreen,
+) -> Result<()> {
     loop {
         guard
             .terminal()
@@ -74,13 +78,12 @@ fn event_loop(guard: &mut TerminalGuard, screen: &mut ListScreen) -> Result<()> 
             .map_err(LazyicsError::Terminal)?;
 
         // Block-with-timeout so terminal resizes etc. eventually redraw even
-        // without input. Phase 1 just polls; richer event types (mouse,
-        // resize) get handled as their phases land.
+        // without input.
         if !event::poll(POLL_INTERVAL).map_err(LazyicsError::Terminal)? {
             continue;
         }
         // Non-key events (Resize / Mouse / Paste / FocusGained / FocusLost)
-        // are no-ops in Phase 1; the next draw picks up any resize naturally.
+        // are no-ops in Phase 3a; the next draw picks up any resize naturally.
         if let Event::Key(key_event) = event::read().map_err(LazyicsError::Terminal)? {
             let Some(intent) = keymap::map(key_event) else {
                 continue;
@@ -88,9 +91,49 @@ fn event_loop(guard: &mut TerminalGuard, screen: &mut ListScreen) -> Result<()> 
             match screen.handle(intent) {
                 ScreenAction::Continue => {}
                 ScreenAction::Quit => return Ok(()),
+                ScreenAction::RemoveByIndices(indices) => {
+                    apply_remove(repo, screen, &indices)?;
+                }
             }
         }
     }
+}
+
+/// Submit a Remove-mode confirmation to `icscli::application::use_cases::remove`
+/// and reload the screen from the repository so the deletion is reflected.
+fn apply_remove(
+    repo: &FileCalendarRepository,
+    screen: &mut ListScreen,
+    indices: &[usize],
+) -> Result<()> {
+    use lazyics::application::use_cases::{RunContext, remove};
+
+    let count = indices.len();
+    let spec = indices
+        .iter()
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    // `quiet = true` keeps the use case's "Removed: …" status off our stderr
+    // (it would race the alternate screen); `allow_prompts = false` makes
+    // sure no interactive fallback fires from inside the TUI.
+    let ctx = RunContext {
+        quiet: true,
+        allow_prompts: false,
+    };
+    let file_label = screen.file_label().to_string();
+    match remove(repo, ctx, None, Some(&spec)) {
+        Ok(()) => {
+            *screen = ListScreen::from_repo(repo, file_label)?;
+            screen.set_transient_status(format!("Removed {count} event(s)."));
+            tracing::info!(count, indices = ?indices, "remove succeeded");
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "remove failed");
+            screen.set_transient_status(format!("Remove failed: {e}"));
+        }
+    }
+    Ok(())
 }
 
 fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args> {

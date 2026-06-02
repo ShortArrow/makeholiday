@@ -10,8 +10,13 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 /// High-level user intent produced by a single key press.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Intent {
-    /// Quit the application.
+    /// Quit the application — force-exit regardless of modal state.
     Quit,
+    /// Back out of the current modal state. The active screen interprets
+    /// this contextually: in a top-level browse view it falls through to
+    /// [`Intent::Quit`]; in multi-select Remove mode it discards the marks
+    /// and returns to browse.
+    Cancel,
     /// Move selection one row up.
     NavUp,
     /// Move selection one row down.
@@ -20,6 +25,13 @@ pub enum Intent {
     NavTop,
     /// Move selection to the last row.
     NavBottom,
+    /// Enter multi-select Remove mode.
+    OpenRemove,
+    /// Toggle the mark on the currently-selected row (Remove mode only).
+    ToggleMark,
+    /// Confirm the current modal action — in Remove mode, submit the
+    /// marked indices to `icscli::application::use_cases::remove`.
+    Confirm,
 }
 
 /// Map a single [`KeyEvent`] to an [`Intent`]. Returns `None` for keys that
@@ -36,8 +48,8 @@ pub fn map(event: KeyEvent) -> Option<Intent> {
 
     match (event.code, event.modifiers) {
         (KeyCode::Char('q'), KeyModifiers::NONE) => Some(Intent::Quit),
-        (KeyCode::Esc, _) => Some(Intent::Quit),
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => Some(Intent::Quit),
+        (KeyCode::Esc, _) => Some(Intent::Cancel),
 
         (KeyCode::Char('j'), KeyModifiers::NONE) => Some(Intent::NavDown),
         (KeyCode::Down, _) => Some(Intent::NavDown),
@@ -50,6 +62,17 @@ pub fn map(event: KeyEvent) -> Option<Intent> {
 
         (KeyCode::Char('G'), KeyModifiers::SHIFT) => Some(Intent::NavBottom),
         (KeyCode::End, _) => Some(Intent::NavBottom),
+
+        // Remove-mode entry: ADR-025 §"Initial scope" binds d and x.
+        (KeyCode::Char('d'), KeyModifiers::NONE) => Some(Intent::OpenRemove),
+        (KeyCode::Char('x'), KeyModifiers::NONE) => Some(Intent::OpenRemove),
+
+        // Mark toggle for multi-select.
+        (KeyCode::Char(' '), KeyModifiers::NONE) => Some(Intent::ToggleMark),
+
+        // Confirm: Enter or Shift+D (ADR-025 §"Initial scope": "D / Enter").
+        (KeyCode::Enter, _) => Some(Intent::Confirm),
+        (KeyCode::Char('D'), KeyModifiers::SHIFT) => Some(Intent::Confirm),
 
         _ => None,
     }
@@ -87,10 +110,44 @@ mod tests {
     }
 
     #[test]
-    fn esc_quits() {
+    fn esc_emits_cancel_not_quit() {
+        // ADR-025 §"Initial scope" — Esc backs out of modal state;
+        // ListScreen falls through to Quit at the top level.
         assert_eq!(
             map(press(KeyCode::Esc, KeyModifiers::NONE)),
-            Some(Intent::Quit)
+            Some(Intent::Cancel)
+        );
+    }
+
+    #[test]
+    fn d_and_x_open_remove_mode() {
+        assert_eq!(
+            map(press(KeyCode::Char('d'), KeyModifiers::NONE)),
+            Some(Intent::OpenRemove)
+        );
+        assert_eq!(
+            map(press(KeyCode::Char('x'), KeyModifiers::NONE)),
+            Some(Intent::OpenRemove)
+        );
+    }
+
+    #[test]
+    fn space_toggles_mark() {
+        assert_eq!(
+            map(press(KeyCode::Char(' '), KeyModifiers::NONE)),
+            Some(Intent::ToggleMark)
+        );
+    }
+
+    #[test]
+    fn enter_and_shift_d_both_confirm() {
+        assert_eq!(
+            map(press(KeyCode::Enter, KeyModifiers::NONE)),
+            Some(Intent::Confirm)
+        );
+        assert_eq!(
+            map(press(KeyCode::Char('D'), KeyModifiers::SHIFT)),
+            Some(Intent::Confirm)
         );
     }
 

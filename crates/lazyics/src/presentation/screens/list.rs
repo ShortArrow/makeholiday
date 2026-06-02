@@ -1,37 +1,53 @@
 //! Event list screen.
 //!
-//! Phase 2 introduces `from_events` (typed VEvent slice) and `from_repo`
-//! (any `CalendarRepository`) constructors so the screen renders real
-//! calendar data via `icscli::display::format_event_line`. `placeholder`
-//! is retained for the keymap/render unit tests, which would otherwise
-//! need to fabricate VEvents to exercise navigation.
+//! Phase 3a introduces a Browse/Remove mode state machine. In Browse mode
+//! the screen behaves as before (`j`/`k`/`g`/`G` nav, `q` quit). Pressing
+//! `d` or `x` opens Remove mode: space marks/unmarks rows, Enter or `D`
+//! confirms (the screen returns a [`ScreenAction::RemoveByIndices`] which
+//! the Composition Root submits to `icscli::application::use_cases::remove`),
+//! Esc discards marks and returns to Browse.
+
+use std::collections::BTreeSet;
 
 use ics_core::VEvent;
 use icscli::application::ports::CalendarRepository;
 use icscli::display::format_event_line;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 
 use crate::error::Result;
 use crate::presentation::keymap::Intent;
 
 /// The outcome of handling an [`Intent`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScreenAction {
     /// Stay on this screen; keep looping.
     Continue,
     /// Exit the application normally.
     Quit,
+    /// Submit a remove request for the given **1-based** indices into the
+    /// current event list. The Composition Root issues the actual
+    /// `use_cases::remove` call so the repository write happens outside
+    /// the screen.
+    RemoveByIndices(Vec<usize>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Mode {
+    Browse,
+    Remove { marked: BTreeSet<usize> },
 }
 
 pub struct ListScreen {
     items: Vec<String>,
     state: ListState,
-    /// Filesystem path the screen will eventually load from. Stored for the
-    /// status bar; not yet used for I/O in Phase 1.
     file_label: String,
+    mode: Mode,
+    /// A one-shot message (e.g. "Removed 3 event(s).") rendered on the
+    /// status bar until the next user interaction clears it.
+    transient_status: Option<String>,
 }
 
 impl ListScreen {
@@ -74,6 +90,8 @@ impl ListScreen {
             items,
             state,
             file_label,
+            mode: Mode::Browse,
+            transient_status: None,
         }
     }
 
@@ -85,11 +103,54 @@ impl ListScreen {
         self.state.selected()
     }
 
-    /// Apply a navigation [`Intent`]. Returns whether the app should keep
-    /// looping or quit.
+    /// The path-as-displayed (passed in at construction). Composition Root
+    /// reuses this when rebuilding the screen after a successful remove.
+    pub fn file_label(&self) -> &str {
+        &self.file_label
+    }
+
+    /// Set a one-shot status message that the next render will display on
+    /// the status bar. Cleared by the next intent.
+    pub fn set_transient_status(&mut self, msg: impl Into<String>) {
+        self.transient_status = Some(msg.into());
+    }
+
+    /// Marked 0-based indices in Remove mode. Empty in Browse mode.
+    /// Exposed for unit tests.
+    #[cfg(test)]
+    fn marked(&self) -> Vec<usize> {
+        match &self.mode {
+            Mode::Browse => Vec::new(),
+            Mode::Remove { marked } => marked.iter().copied().collect(),
+        }
+    }
+
+    /// Whether the screen is currently in Remove mode. Exposed for tests
+    /// and for the status-bar render.
+    pub fn is_remove_mode(&self) -> bool {
+        matches!(self.mode, Mode::Remove { .. })
+    }
+
+    /// Apply an [`Intent`]. Returns whether the app should keep looping,
+    /// quit, or submit a remove request to the Composition Root.
     pub fn handle(&mut self, intent: Intent) -> ScreenAction {
+        // Any user interaction clears the previous status message — except
+        // when the new intent itself produces a fresh one (handled by
+        // Composition Root, which sets it after `handle` returns).
+        self.transient_status = None;
+
         match intent {
             Intent::Quit => ScreenAction::Quit,
+            Intent::Cancel => match self.mode {
+                // Esc at the top level quits, matching the original
+                // Phase 1 behavior (q/Ctrl+C still work too).
+                Mode::Browse => ScreenAction::Quit,
+                // Esc in Remove mode discards marks and returns to Browse.
+                Mode::Remove { .. } => {
+                    self.mode = Mode::Browse;
+                    ScreenAction::Continue
+                }
+            },
             Intent::NavDown => {
                 self.move_cursor(1);
                 ScreenAction::Continue
@@ -110,6 +171,32 @@ impl ListScreen {
                 }
                 ScreenAction::Continue
             }
+            Intent::OpenRemove => {
+                if !self.items.is_empty() && matches!(self.mode, Mode::Browse) {
+                    self.mode = Mode::Remove {
+                        marked: BTreeSet::new(),
+                    };
+                }
+                ScreenAction::Continue
+            }
+            Intent::ToggleMark => {
+                if let Mode::Remove { marked } = &mut self.mode {
+                    if let Some(idx) = self.state.selected() {
+                        if !marked.insert(idx) {
+                            marked.remove(&idx);
+                        }
+                    }
+                }
+                ScreenAction::Continue
+            }
+            Intent::Confirm => match &self.mode {
+                Mode::Remove { marked } if !marked.is_empty() => {
+                    // Convert 0-based to 1-based for `icscli`'s index spec.
+                    let indices: Vec<usize> = marked.iter().map(|i| i + 1).collect();
+                    ScreenAction::RemoveByIndices(indices)
+                }
+                _ => ScreenAction::Continue,
+            },
         }
     }
 
@@ -128,14 +215,13 @@ impl ListScreen {
         let layout = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]);
         let [list_area, status_area] = layout.areas(frame.area());
 
-        let block = Block::default()
-            .title("lazyics — events")
-            .borders(Borders::ALL);
+        let title = match &self.mode {
+            Mode::Browse => "lazyics — events".to_string(),
+            Mode::Remove { marked } => format!("lazyics — REMOVE ({} marked)", marked.len()),
+        };
+        let block = Block::default().title(title).borders(Borders::ALL);
 
         if self.items.is_empty() {
-            // Render an empty-state hint inside the bordered block. The
-            // List widget would render empty rows; this is a friendlier
-            // landing pad for newly-`init`-ed calendars.
             let inner = block.inner(list_area);
             frame.render_widget(block, list_area);
             let hint = Paragraph::new(
@@ -144,10 +230,27 @@ impl ListScreen {
             .alignment(Alignment::Center);
             frame.render_widget(hint, inner);
         } else {
+            let marked: BTreeSet<usize> = match &self.mode {
+                Mode::Remove { marked } => marked.clone(),
+                Mode::Browse => BTreeSet::new(),
+            };
             let list_items: Vec<ListItem> = self
                 .items
                 .iter()
-                .map(|s| ListItem::new(s.as_str()))
+                .enumerate()
+                .map(|(i, text)| {
+                    if self.is_remove_mode() {
+                        let prefix = if marked.contains(&i) { "[x] " } else { "[ ] " };
+                        let style = if marked.contains(&i) {
+                            Style::default().fg(Color::Red)
+                        } else {
+                            Style::default()
+                        };
+                        ListItem::new(format!("{prefix}{text}")).style(style)
+                    } else {
+                        ListItem::new(text.as_str())
+                    }
+                })
                 .collect();
             let list = List::new(list_items)
                 .block(block)
@@ -156,12 +259,21 @@ impl ListScreen {
             frame.render_stateful_widget(list, list_area, &mut self.state);
         }
 
-        let status = format!(
-            "{}  |  {} event(s)  |  q quit  j/k move  g/G top/bottom",
-            self.file_label,
-            self.items.len()
-        );
-        frame.render_widget(Paragraph::new(status), status_area);
+        let status_text = self.transient_status.clone().unwrap_or_else(|| {
+            let count = self.items.len();
+            match &self.mode {
+                Mode::Browse => format!(
+                    "{}  |  {} event(s)  |  q quit  j/k move  g/G top/bottom  d remove",
+                    self.file_label, count,
+                ),
+                Mode::Remove { marked } => format!(
+                    "REMOVE  |  {} marked / {} total  |  space toggle  Enter confirm  Esc cancel",
+                    marked.len(),
+                    count,
+                ),
+            }
+        });
+        frame.render_widget(Paragraph::new(status_text), status_area);
     }
 }
 
@@ -193,9 +305,16 @@ mod tests {
         }
     }
 
+    fn three_events() -> Vec<VEvent> {
+        vec![
+            make_event((2026, 1, 1), (2026, 1, 2), "a"),
+            make_event((2026, 2, 11), (2026, 2, 12), "b"),
+            make_event((2026, 5, 3), (2026, 5, 7), "c"),
+        ]
+    }
+
     #[test]
     fn from_events_formats_each_row_via_icscli_display() {
-        // dtend is RFC-exclusive (+1 day from inclusive end), per ics-core.
         let events = vec![
             make_event((2026, 1, 1), (2026, 1, 2), "元日"),
             make_event((2026, 12, 29), (2027, 1, 4), "年末年始"),
@@ -294,5 +413,96 @@ mod tests {
         let mut s = ListScreen::placeholder("test.ics");
         assert_eq!(s.handle(Intent::NavDown), ScreenAction::Continue);
         assert_eq!(s.handle(Intent::NavTop), ScreenAction::Continue);
+    }
+
+    // --- Remove mode transitions ---------------------------------------
+
+    #[test]
+    fn open_remove_enters_remove_mode_when_non_empty() {
+        let mut s = ListScreen::from_events(&three_events(), "h.ics");
+        assert!(!s.is_remove_mode());
+        s.handle(Intent::OpenRemove);
+        assert!(s.is_remove_mode());
+    }
+
+    #[test]
+    fn open_remove_is_noop_on_empty_screen() {
+        let mut s = ListScreen::from_events(&[], "h.ics");
+        s.handle(Intent::OpenRemove);
+        assert!(!s.is_remove_mode());
+    }
+
+    #[test]
+    fn cancel_in_browse_quits() {
+        let mut s = ListScreen::from_events(&three_events(), "h.ics");
+        assert_eq!(s.handle(Intent::Cancel), ScreenAction::Quit);
+    }
+
+    #[test]
+    fn cancel_in_remove_returns_to_browse_and_clears_marks() {
+        let mut s = ListScreen::from_events(&three_events(), "h.ics");
+        s.handle(Intent::OpenRemove);
+        s.handle(Intent::ToggleMark); // mark row 0
+        assert_eq!(s.marked(), vec![0]);
+        assert_eq!(s.handle(Intent::Cancel), ScreenAction::Continue);
+        assert!(!s.is_remove_mode());
+        assert_eq!(s.marked(), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn toggle_mark_in_browse_is_noop() {
+        let mut s = ListScreen::from_events(&three_events(), "h.ics");
+        s.handle(Intent::ToggleMark);
+        assert_eq!(s.marked(), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn toggle_mark_in_remove_adds_then_removes() {
+        let mut s = ListScreen::from_events(&three_events(), "h.ics");
+        s.handle(Intent::OpenRemove);
+        s.handle(Intent::ToggleMark); // mark 0
+        assert_eq!(s.marked(), vec![0]);
+        s.handle(Intent::NavDown);
+        s.handle(Intent::ToggleMark); // mark 1
+        assert_eq!(s.marked(), vec![0, 1]);
+        s.handle(Intent::NavUp);
+        s.handle(Intent::ToggleMark); // unmark 0
+        assert_eq!(s.marked(), vec![1]);
+    }
+
+    #[test]
+    fn confirm_with_no_marks_is_noop() {
+        let mut s = ListScreen::from_events(&three_events(), "h.ics");
+        s.handle(Intent::OpenRemove);
+        assert_eq!(s.handle(Intent::Confirm), ScreenAction::Continue);
+        assert!(s.is_remove_mode());
+    }
+
+    #[test]
+    fn confirm_with_marks_returns_remove_by_indices_one_based() {
+        let mut s = ListScreen::from_events(&three_events(), "h.ics");
+        s.handle(Intent::OpenRemove);
+        s.handle(Intent::ToggleMark); // mark 0
+        s.handle(Intent::NavDown);
+        s.handle(Intent::NavDown);
+        s.handle(Intent::ToggleMark); // mark 2
+        assert_eq!(
+            s.handle(Intent::Confirm),
+            ScreenAction::RemoveByIndices(vec![1, 3])
+        );
+    }
+
+    #[test]
+    fn confirm_in_browse_mode_is_noop() {
+        let mut s = ListScreen::from_events(&three_events(), "h.ics");
+        assert_eq!(s.handle(Intent::Confirm), ScreenAction::Continue);
+    }
+
+    #[test]
+    fn transient_status_is_cleared_on_next_intent() {
+        let mut s = ListScreen::from_events(&three_events(), "h.ics");
+        s.set_transient_status("Removed 1 event(s).");
+        s.handle(Intent::NavDown);
+        assert_eq!(s.transient_status, None);
     }
 }
