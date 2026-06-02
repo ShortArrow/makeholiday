@@ -10,6 +10,7 @@ use crate::diagnostic::{Diagnostic, Severity};
 use crate::walker::RawVEventScan;
 
 pub mod rfc5545;
+pub mod vendor;
 
 /// Context shared by every rule for a single lint pass.
 ///
@@ -75,5 +76,9 @@ pub fn all() -> Vec<&'static dyn Rule> {
         &rfc5545::ConflictingEndAndDuration,
         &rfc5545::EndBeforeStart,
         &rfc5545::EmptySummary,
+        &vendor::MicrosoftOnly,
+        &vendor::GoogleOnly,
+        &vendor::IcloudOnly,
+        &vendor::UnrecognizedX,
     ]
 }
