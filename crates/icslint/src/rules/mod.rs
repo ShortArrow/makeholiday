@@ -69,6 +69,11 @@ pub fn all() -> Vec<&'static dyn Rule> {
     vec![
         &rfc5545::RequiredUid,
         &rfc5545::RequiredDtstamp,
+        &rfc5545::RequiredDtstart,
         &rfc5545::DuplicateSummary,
+        &rfc5545::DuplicateDtstart,
+        &rfc5545::ConflictingEndAndDuration,
+        &rfc5545::EndBeforeStart,
+        &rfc5545::EmptySummary,
     ]
 }
