@@ -4,6 +4,7 @@
 - Date: 2026-05-29
 - Supersedes: [ADR-022](022-tui-front-end-policy.md) (TUI front-end policy)
 - Amended: 2026-06-02 — [ADR-027](027-makeholiday-to-icscli-rename.md) renamed the CLI crate `makeholiday` → `icscli`. References below to `makeholiday`'s library API and `makeholiday::application::use_cases` should be read as `icscli::application::use_cases` from v0.2.0 onward.
+- Amended: 2026-06-03 — Multi-view + variable granularity scope addition (see §"Multi-view amendment" below). The original §"Initial scope" list (Phase-1-style single-screen list + Add/Edit/Remove) is expanded with two sibling top-level views (Timeline, Grid) and a per-view time-granularity selector. Phase 4a lands the view-switching foundation; Add/Edit forms and the year-grid granularity are deferred.
 
 ## Context
 
@@ -149,3 +150,83 @@ No code changes are required to *accept* this ADR. The implementation lands as t
 Each step lands as its own commit (per [ADR-024](024-solo-phase-branching-carve-out.md) solo-phase carve-out — direct to main during v0.2.0 development, before the ics-core repo split flips the PR ceremony back on).
 
 PRD §9 and ADR-017 references to `makeholiday-tui` are updated to `lazyics` in a separate doc-only commit.
+
+## Multi-view amendment (2026-06-03)
+
+The original §"Initial scope" pinned a single list-style screen as the
+v0.2.0 deliverable. After Phase 3a (multi-select Remove) landed, the
+maintainer asked for two additional top-level views — a chronological
+timeline and a calendar grid — each toggling its own time granularity.
+This amendment records the scope expansion and the view-switching
+mechanics so future readers see the architecture without spelunking
+through commit history.
+
+### Three top-level views
+
+| View | Purpose | Granularity |
+|---|---|---|
+| **List** | One row per event in calendar order. Owns the Remove modal state. The primary surface for CRUD. | none (fixed) |
+| **Timeline** | Vertical chronological scroll with one header per group. Easier to see clustering and gaps. | month (default) ↔ week |
+| **Grid** | Calendar grid with a date-cursor. Day cells with at least one event get a "•" marker; the cursor cell's events list renders below the grid. | month (7×6, default) ↔ week (7×1) |
+
+Phase 4a ships all three views. Phase 4b is reserved for richer
+granularity options — at minimum a year-grid (12 mini-month-grids) for
+Grid view — and other cross-view affordances as concrete demand surfaces.
+
+### View switching
+
+View switching is a **Composition-Root concern**, not a screen action.
+The active screen receives every intent *except* `CycleView` and
+`SwitchView(ViewKind)`, which the event loop intercepts and uses to swap
+the active `Screen` enum variant. This keeps screens unaware of each
+other and lets each variant focus on its own keybindings.
+
+| Key | Intent |
+|---|---|
+| `Tab` | `CycleView` — List → Timeline → Grid → List |
+| `1` / `2` / `3` | `SwitchView(List | Timeline | Grid)` |
+| `u` | `CycleGranularity` — screen-specific; List ignores |
+
+`CycleGranularity` *is* a screen-level intent because the granularity
+state lives inside each view. List has no granularity (ignores `u`);
+Timeline cycles month ↔ week; Grid cycles month ↔ week (year coming in
+Phase 4b).
+
+### Cursor preservation across granularity changes
+
+Both Timeline and Grid preserve their cursor when granularity flips:
+
+- Timeline re-anchors selection on the same `VEvent.uid` after rebuilding
+  rows under the new grouping. If the event no longer appears (it
+  always does today, but the model leaves room for future filtering),
+  selection falls back to the first event.
+- Grid keeps the cursor's `NaiveDate` literally; the grid simply
+  re-renders around it under the new granularity.
+
+This is non-negotiable for the UX — flipping the unit should feel like
+re-framing the same data, not like resetting state.
+
+### Cross-cutting invariants
+
+- **Each view rebuilds from the same `Vec<VEvent>`**. The Composition
+  Root holds the canonical event list (loaded via
+  `FileCalendarRepository`) and constructs a fresh view on every
+  switch. Views never own each other's state; switching is cheap.
+- **Each view ignores intents it doesn't handle**. `OpenRemove` /
+  `ToggleMark` / `Confirm` go through `ListScreen` only; `NavLeft` /
+  `NavRight` are meaningful in Grid only; etc. The
+  `ScreenAction::Continue` no-op is the contract. No view returns an
+  error for an unrecognized intent.
+- **Add / Edit forms still belong to List view**. Phase 3b/c will land
+  text-input widgets and form screens that List wraps; Timeline and
+  Grid won't directly host forms. (A future ADR may revisit this when
+  Grid gains "add event on cursor date" affordance.)
+
+### Phase rollout
+
+| Phase | Scope |
+|---|---|
+| 4a (landed 2026-06-03) | View enum dispatch, Tab/1/2/3 switching, Timeline (month/week), Grid (month/week) with date-cursor, ADR amendment. |
+| 4b (next) | Grid year-granularity (12 mini-grids), Timeline day-granularity if needed, in-grid event creation at cursor date. |
+| 3b/c (parallel track) | Text-input widget + Add/Edit forms under List view (independent of Phase 4 view work). |
+

@@ -19,20 +19,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 
 use crate::error::Result;
 use crate::presentation::keymap::Intent;
-
-/// The outcome of handling an [`Intent`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ScreenAction {
-    /// Stay on this screen; keep looping.
-    Continue,
-    /// Exit the application normally.
-    Quit,
-    /// Submit a remove request for the given **1-based** indices into the
-    /// current event list. The Composition Root issues the actual
-    /// `use_cases::remove` call so the repository write happens outside
-    /// the screen.
-    RemoveByIndices(Vec<usize>),
-}
+use crate::presentation::screens::ScreenAction;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Mode {
@@ -197,6 +184,13 @@ impl ListScreen {
                 }
                 _ => ScreenAction::Continue,
             },
+            // List view has a single column and no granularity — these
+            // intents are meaningful in Grid / Timeline only.
+            Intent::NavLeft
+            | Intent::NavRight
+            | Intent::CycleGranularity
+            | Intent::CycleView
+            | Intent::SwitchView(_) => ScreenAction::Continue,
         }
     }
 

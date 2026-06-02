@@ -4,8 +4,9 @@
 //! (ADR-025 §"Output and exit codes"), opens the terminal under a RAII
 //! guard, and drives the event loop until the active screen asks to quit.
 //!
-//! Phase 1 ships only the [`ListScreen`] with placeholder data. Add / Edit
-//! / Remove forms and live calendar loading land in later phases.
+//! Phase 4a wires multi-view switching (List / Timeline / Grid) at the
+//! Composition-Root level: `Tab` cycles the active view and `1`/`2`/`3`
+//! jump directly. The active [`Screen`] receives every other intent.
 
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -13,13 +14,16 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use crossterm::event::{self, Event};
+use ics_core::VEvent;
 use icscli::application::ports::CalendarRepository;
 use icscli::infrastructure::FileCalendarRepository;
 
 use lazyics::error::{LazyicsError, Result};
 use lazyics::infrastructure::terminal::TerminalGuard;
-use lazyics::presentation::keymap;
-use lazyics::presentation::screens::list::{ListScreen, ScreenAction};
+use lazyics::presentation::keymap::{self, Intent};
+use lazyics::presentation::screens::{
+    GridScreen, ListScreen, Screen, ScreenAction, TimelineScreen, ViewKind,
+};
 
 const DEFAULT_FILE: &str = "calendar.ics";
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -60,16 +64,18 @@ fn run() -> Result<()> {
         )));
     }
     let file_label = args.file.display().to_string();
-    let mut screen = ListScreen::from_repo(&repo, file_label)?;
+    let events = repo.load()?.events;
+    let mut screen = build_screen(ViewKind::List, &events, &file_label);
 
     let mut guard = TerminalGuard::enter()?;
-    event_loop(&mut guard, &repo, &mut screen)
+    event_loop(&mut guard, &repo, &mut screen, &file_label)
 }
 
 fn event_loop(
     guard: &mut TerminalGuard,
     repo: &FileCalendarRepository,
-    screen: &mut ListScreen,
+    screen: &mut Screen,
+    file_label: &str,
 ) -> Result<()> {
     loop {
         guard
@@ -77,25 +83,65 @@ fn event_loop(
             .draw(|frame| screen.render(frame))
             .map_err(LazyicsError::Terminal)?;
 
-        // Block-with-timeout so terminal resizes etc. eventually redraw even
-        // without input.
         if !event::poll(POLL_INTERVAL).map_err(LazyicsError::Terminal)? {
             continue;
         }
         // Non-key events (Resize / Mouse / Paste / FocusGained / FocusLost)
-        // are no-ops in Phase 3a; the next draw picks up any resize naturally.
+        // are no-ops; the next draw picks up any resize naturally.
         if let Event::Key(key_event) = event::read().map_err(LazyicsError::Terminal)? {
             let Some(intent) = keymap::map(key_event) else {
                 continue;
             };
+
+            // View-switching intents are intercepted at the Composition
+            // Root so the active screen never sees them (and screens stay
+            // unaware of the View enum).
+            match intent {
+                Intent::CycleView => {
+                    let next_kind = screen.kind().next();
+                    switch_view(repo, screen, next_kind, file_label)?;
+                    continue;
+                }
+                Intent::SwitchView(kind) => {
+                    if screen.kind() != kind {
+                        switch_view(repo, screen, kind, file_label)?;
+                    }
+                    continue;
+                }
+                _ => {}
+            }
+
             match screen.handle(intent) {
                 ScreenAction::Continue => {}
                 ScreenAction::Quit => return Ok(()),
                 ScreenAction::RemoveByIndices(indices) => {
-                    apply_remove(repo, screen, &indices)?;
+                    apply_remove(repo, screen, file_label, &indices)?;
                 }
             }
         }
+    }
+}
+
+/// Replace the active `Screen` with a fresh instance of `kind`, reloading
+/// events from disk so concurrent edits via `icscli` are reflected.
+fn switch_view(
+    repo: &FileCalendarRepository,
+    screen: &mut Screen,
+    kind: ViewKind,
+    file_label: &str,
+) -> Result<()> {
+    let events = repo.load()?.events;
+    *screen = build_screen(kind, &events, file_label);
+    Ok(())
+}
+
+fn build_screen(kind: ViewKind, events: &[VEvent], file_label: &str) -> Screen {
+    match kind {
+        ViewKind::List => Screen::List(ListScreen::from_events(events, file_label.to_string())),
+        ViewKind::Timeline => {
+            Screen::Timeline(TimelineScreen::from_events(events, file_label.to_string()))
+        }
+        ViewKind::Grid => Screen::Grid(GridScreen::from_events(events, file_label.to_string())),
     }
 }
 
@@ -103,7 +149,8 @@ fn event_loop(
 /// and reload the screen from the repository so the deletion is reflected.
 fn apply_remove(
     repo: &FileCalendarRepository,
-    screen: &mut ListScreen,
+    screen: &mut Screen,
+    file_label: &str,
     indices: &[usize],
 ) -> Result<()> {
     use lazyics::application::use_cases::{RunContext, remove};
@@ -121,10 +168,10 @@ fn apply_remove(
         quiet: true,
         allow_prompts: false,
     };
-    let file_label = screen.file_label().to_string();
     match remove(repo, ctx, None, Some(&spec)) {
         Ok(()) => {
-            *screen = ListScreen::from_repo(repo, file_label)?;
+            let kind = screen.kind();
+            switch_view(repo, screen, kind, file_label)?;
             screen.set_transient_status(format!("Removed {count} event(s)."));
             tracing::info!(count, indices = ?indices, "remove succeeded");
         }
@@ -214,12 +261,27 @@ Options:
   -h, --help          Show this help and exit
   -V, --version       Show version and exit
 
-Keys (Phase 1):
-  q | Esc | Ctrl+C    Quit
-  j | Down            Move selection down
-  k | Up              Move selection up
-  g | Home            Jump to first event
-  G | End             Jump to last event
+Views:
+  Tab                 Cycle List → Timeline → Grid → List
+  1                   Jump to List view
+  2                   Jump to Timeline view
+  3                   Jump to Grid view
+  u                   Cycle current view's time unit (month ↔ week)
+
+Common keys:
+  q | Ctrl+C          Quit
+  Esc                 Cancel modal state (List Remove mode) / Quit at top level
+  j | Down            Down / next row / next week (Grid)
+  k | Up              Up / previous row / previous week (Grid)
+  h | Left            Previous day (Grid)
+  l | Right           Next day (Grid)
+  g | Home            First event / first of period
+  G | End             Last event / last of period
+
+List view (Remove mode):
+  d | x               Enter multi-select Remove mode
+  Space               Toggle mark on highlighted row
+  Enter | Shift+D     Confirm removal of marked events
 "
 }
 

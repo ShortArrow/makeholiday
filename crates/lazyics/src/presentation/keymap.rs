@@ -7,6 +7,8 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
+use crate::presentation::screens::ViewKind;
+
 /// High-level user intent produced by a single key press.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Intent {
@@ -21,10 +23,23 @@ pub enum Intent {
     NavUp,
     /// Move selection one row down.
     NavDown,
-    /// Move selection to the first row.
+    /// Move selection one column left. Used by Grid; List/Timeline ignore.
+    NavLeft,
+    /// Move selection one column right. Used by Grid; List/Timeline ignore.
+    NavRight,
+    /// Move selection to the first row / cell.
     NavTop,
-    /// Move selection to the last row.
+    /// Move selection to the last row / cell.
     NavBottom,
+    /// Cycle to the next view (Tab): List → Timeline → Grid → List.
+    /// Composition-Root level intent — screens never see it.
+    CycleView,
+    /// Jump to a specific view (number keys 1/2/3).
+    /// Composition-Root level intent — screens never see it.
+    SwitchView(ViewKind),
+    /// Cycle the active view's time granularity. List ignores; Timeline
+    /// cycles month ↔ week; Grid cycles month ↔ week.
+    CycleGranularity,
     /// Enter multi-select Remove mode.
     OpenRemove,
     /// Toggle the mark on the currently-selected row (Remove mode only).
@@ -57,11 +72,26 @@ pub fn map(event: KeyEvent) -> Option<Intent> {
         (KeyCode::Char('k'), KeyModifiers::NONE) => Some(Intent::NavUp),
         (KeyCode::Up, _) => Some(Intent::NavUp),
 
+        (KeyCode::Char('h'), KeyModifiers::NONE) => Some(Intent::NavLeft),
+        (KeyCode::Left, _) => Some(Intent::NavLeft),
+
+        (KeyCode::Char('l'), KeyModifiers::NONE) => Some(Intent::NavRight),
+        (KeyCode::Right, _) => Some(Intent::NavRight),
+
         (KeyCode::Char('g'), KeyModifiers::NONE) => Some(Intent::NavTop),
         (KeyCode::Home, _) => Some(Intent::NavTop),
 
         (KeyCode::Char('G'), KeyModifiers::SHIFT) => Some(Intent::NavBottom),
         (KeyCode::End, _) => Some(Intent::NavBottom),
+
+        // View switching (Phase 4a).
+        (KeyCode::Tab, _) => Some(Intent::CycleView),
+        (KeyCode::Char('1'), KeyModifiers::NONE) => Some(Intent::SwitchView(ViewKind::List)),
+        (KeyCode::Char('2'), KeyModifiers::NONE) => Some(Intent::SwitchView(ViewKind::Timeline)),
+        (KeyCode::Char('3'), KeyModifiers::NONE) => Some(Intent::SwitchView(ViewKind::Grid)),
+
+        // Granularity cycle ("u" for "unit").
+        (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Intent::CycleGranularity),
 
         // Remove-mode entry: ADR-025 §"Initial scope" binds d and x.
         (KeyCode::Char('d'), KeyModifiers::NONE) => Some(Intent::OpenRemove),
@@ -136,6 +166,58 @@ mod tests {
         assert_eq!(
             map(press(KeyCode::Char(' '), KeyModifiers::NONE)),
             Some(Intent::ToggleMark)
+        );
+    }
+
+    #[test]
+    fn tab_cycles_view() {
+        assert_eq!(
+            map(press(KeyCode::Tab, KeyModifiers::NONE)),
+            Some(Intent::CycleView)
+        );
+    }
+
+    #[test]
+    fn number_keys_switch_view() {
+        assert_eq!(
+            map(press(KeyCode::Char('1'), KeyModifiers::NONE)),
+            Some(Intent::SwitchView(ViewKind::List))
+        );
+        assert_eq!(
+            map(press(KeyCode::Char('2'), KeyModifiers::NONE)),
+            Some(Intent::SwitchView(ViewKind::Timeline))
+        );
+        assert_eq!(
+            map(press(KeyCode::Char('3'), KeyModifiers::NONE)),
+            Some(Intent::SwitchView(ViewKind::Grid))
+        );
+    }
+
+    #[test]
+    fn u_cycles_granularity() {
+        assert_eq!(
+            map(press(KeyCode::Char('u'), KeyModifiers::NONE)),
+            Some(Intent::CycleGranularity)
+        );
+    }
+
+    #[test]
+    fn h_and_l_nav_horizontal() {
+        assert_eq!(
+            map(press(KeyCode::Char('h'), KeyModifiers::NONE)),
+            Some(Intent::NavLeft)
+        );
+        assert_eq!(
+            map(press(KeyCode::Char('l'), KeyModifiers::NONE)),
+            Some(Intent::NavRight)
+        );
+        assert_eq!(
+            map(press(KeyCode::Left, KeyModifiers::NONE)),
+            Some(Intent::NavLeft)
+        );
+        assert_eq!(
+            map(press(KeyCode::Right, KeyModifiers::NONE)),
+            Some(Intent::NavRight)
         );
     }
 
