@@ -1,0 +1,12 @@
+[package]
+name = "icscli"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "General-purpose iCalendar (RFC 5545) CLI — read, write, query, edit ICS files. Placeholder; first real release planned at v0.2.0 when `crates/makeholiday` is renamed here."
+readme = "README.md"
+keywords = ["icalendar", "ics", "rfc5545", "calendar", "cli"]
+categories = ["command-line-utilities"]

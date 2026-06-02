@@ -6,8 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Lint tool for iCalendar (RFC 5545) files — flags missing required fields, vendor-only extensions, escape mistakes, and structural quirks."
-publish = false
+description = "Lint tool for iCalendar (RFC 5545) files — flags missing required fields, vendor-only extensions, escape mistakes, and structural quirks. Placeholder version; first real release planned at v0.2.0."
+readme = "README.md"
+keywords = ["icalendar", "ics", "rfc5545", "lint", "linter"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "icslint"

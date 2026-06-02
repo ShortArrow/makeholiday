@@ -317,6 +317,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "icscli"
+version = "0.0.0"
+
+[[package]]
 name = "icslint"
 version = "0.0.0"
 dependencies = [
@@ -368,6 +372,10 @@ dependencies = [
  "once_cell",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "lazyics"
+version = "0.0.0"
 
 [[package]]
 name = "leb128fmt"

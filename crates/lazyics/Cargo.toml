@@ -1,0 +1,12 @@
+[package]
+name = "lazyics"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "`lazygit`-inspired terminal UI for browsing and editing iCalendar (RFC 5545) files. Placeholder; first real release planned at v0.2.0 (ADR-025)."
+readme = "README.md"
+keywords = ["icalendar", "ics", "rfc5545", "tui", "ratatui"]
+categories = ["command-line-utilities"]

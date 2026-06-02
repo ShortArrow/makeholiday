@@ -6,8 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Typed iCalendar (RFC 5545) model with vendor-extension support — shared core for makeholiday and future consumers."
-publish = false
+description = "Typed iCalendar (RFC 5545) model with vendor-extension support — shared core for makeholiday and future consumers. Placeholder version; first real release planned at v0.2.0."
+readme = "README.md"
+keywords = ["icalendar", "ics", "rfc5545", "calendar", "parser"]
+categories = ["parsing", "data-structures"]
 
 [dependencies]
 chrono.workspace = true
