@@ -1,0 +1,152 @@
+# Production release pipeline for the four ecosystem crates
+# (`ics-core`, `icscli`, `icslint`, `lazyics`). Manual trigger only —
+# the workflow does not fire on tag push; releases are gated on
+# explicit `gh workflow run` invocation by the maintainer.
+#
+# Versions are read from each crate's `Cargo.toml` — the workflow
+# never accepts a version input. Bump in-tree, commit, then trigger.
+# The skip-if-exists guard makes re-runs idempotent: if the version
+# already exists on crates.io, that crate's publish step no-ops.
+#
+# Authentication uses crates.io OIDC Trusted Publishing via
+# `rust-lang/crates-io-auth-action` — no long-lived
+# `CARGO_REGISTRY_TOKEN`. Each crate must have a Trusted Publisher
+# registered in its crates.io settings:
+#   Repository: ShortArrow/makeholiday
+#   Workflow filename: release-crates.yml
+#   Environment: (blank)
+#
+# Examples:
+#   gh workflow run release-crates.yml -f crate=ics-core
+#   gh workflow run release-crates.yml -f crate=all
+#   gh workflow run release-crates.yml -f crate=all -f dry_run=true
+#
+# When `crate=all`, the publish order is `ics-core → icslint → icscli
+# → lazyics`. `ics-core` first because `icslint` depends on it; a 30 s
+# sleep gives the sparse index time to propagate the new `ics-core`
+# version so `icslint`'s verification build can resolve it.
+#
+# When the workspace eventually splits (ADR-017, planned at v0.2.0
+# end), the per-crate publish steps below split mechanically into one
+# `release.yml` per repository.
+
+name: Release crates to crates.io (OIDC)
+
+on:
+  workflow_dispatch:
+    inputs:
+      crate:
+        description: 'Which crate(s) to publish'
+        type: choice
+        required: true
+        options:
+          - ics-core
+          - icscli
+          - icslint
+          - lazyics
+          - all
+      dry_run:
+        description: 'Run `cargo publish --dry-run` instead of a real publish'
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: release-crates
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish (OIDC)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # Flags reused across each cargo publish step. Empty string when
+      # dry_run=false; `--dry-run` otherwise. Bash string-builds the
+      # final invocation so empty stays empty (no stray flag).
+      PUBLISH_FLAGS: ${{ inputs.dry_run && '--dry-run' || '' }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable pinned 2026-04
+
+      - name: Exchange OIDC token for crates.io token
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1.0.4
+
+      # Each per-crate step: read the version from Cargo.toml, query
+      # crates.io for that exact version, and either publish or skip.
+      # The skip-if-exists guard is the same pattern runex uses — it
+      # makes accidental re-runs harmless and is the only safe way to
+      # rerun a partially-failed all-crates pass.
+
+      - name: Publish ics-core
+        if: ${{ inputs.crate == 'ics-core' || inputs.crate == 'all' }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          set -euo pipefail
+          version=$(grep -m1 '^version' crates/ics-core/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          status=$(curl -fsS -A "makeholiday-ci" -o /dev/null -w '%{http_code}' \
+            "https://crates.io/api/v1/crates/ics-core/$version" || echo "000")
+          if [ "$status" = "200" ]; then
+            echo "ics-core $version already on crates.io — skipping"
+          else
+            cargo publish -p ics-core $PUBLISH_FLAGS
+          fi
+
+      - name: Wait for ics-core index propagation
+        # Only needed when `icslint` is also publishing in this run
+        # and `ics-core` was just freshly published. Cheap insurance
+        # (30 s skipped on no-op runs is acceptable).
+        if: ${{ inputs.crate == 'all' && !inputs.dry_run }}
+        run: sleep 30
+
+      - name: Publish icslint
+        if: ${{ inputs.crate == 'icslint' || inputs.crate == 'all' }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          set -euo pipefail
+          version=$(grep -m1 '^version' crates/icslint/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          status=$(curl -fsS -A "makeholiday-ci" -o /dev/null -w '%{http_code}' \
+            "https://crates.io/api/v1/crates/icslint/$version" || echo "000")
+          if [ "$status" = "200" ]; then
+            echo "icslint $version already on crates.io — skipping"
+          else
+            cargo publish -p icslint $PUBLISH_FLAGS
+          fi
+
+      - name: Publish icscli
+        if: ${{ inputs.crate == 'icscli' || inputs.crate == 'all' }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          set -euo pipefail
+          version=$(grep -m1 '^version' crates/icscli/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          status=$(curl -fsS -A "makeholiday-ci" -o /dev/null -w '%{http_code}' \
+            "https://crates.io/api/v1/crates/icscli/$version" || echo "000")
+          if [ "$status" = "200" ]; then
+            echo "icscli $version already on crates.io — skipping"
+          else
+            cargo publish -p icscli $PUBLISH_FLAGS
+          fi
+
+      - name: Publish lazyics
+        if: ${{ inputs.crate == 'lazyics' || inputs.crate == 'all' }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          set -euo pipefail
+          version=$(grep -m1 '^version' crates/lazyics/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          status=$(curl -fsS -A "makeholiday-ci" -o /dev/null -w '%{http_code}' \
+            "https://crates.io/api/v1/crates/lazyics/$version" || echo "000")
+          if [ "$status" = "200" ]; then
+            echo "lazyics $version already on crates.io — skipping"
+          else
+            cargo publish -p lazyics $PUBLISH_FLAGS
+          fi
