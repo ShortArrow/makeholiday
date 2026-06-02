@@ -1,12 +1,34 @@
 [package]
 name = "icscli"
-version = "0.0.0"
+version = "0.2.0-dev"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "General-purpose iCalendar (RFC 5545) CLI — read, write, query, edit ICS files. Placeholder; first real release planned at v0.2.0 when `crates/makeholiday` is renamed here."
+description = "General-purpose iCalendar (RFC 5545) CLI — read, write, query, and edit ICS files. Renamed from `makeholiday` at v0.2.0 (ADR-027)."
 readme = "README.md"
 keywords = ["icalendar", "ics", "rfc5545", "calendar", "cli"]
 categories = ["command-line-utilities"]
+
+[[bin]]
+name = "icscli"
+path = "src/main.rs"
+
+[lib]
+name = "icscli"
+path = "src/lib.rs"
+
+[dependencies]
+ics-core = { path = "../ics-core", version = "0.0.0" }
+clap.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true

@@ -3,6 +3,7 @@
 - Status: **Accepted**
 - Date: 2026-05-29
 - Related: [ADR-017](017-workspace-and-ics-core-crate.md) (ic-core repo split trigger), [ADR-025](025-lazyics-project-definition.md) (sibling project, lazyics)
+- Amended: 2026-06-02 — [ADR-027](027-makeholiday-to-icscli-rename.md) renamed the CLI crate `makeholiday` → `icscli`. icslint does not depend on the CLI crate (it depends only on `ics-core`), so this ADR is unaffected functionally; remaining prose mentions of `makeholiday` are historical / ecosystem narrative.
 
 ## Context
 

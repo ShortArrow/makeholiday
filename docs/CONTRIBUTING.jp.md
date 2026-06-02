@@ -1,6 +1,6 @@
 [ [English](CONTRIBUTING.md) | **日本語** ]
 
-# makeholiday へのコントリビュート
+# icscli へのコントリビュート
 
 コントリビューションを検討いただきありがとうございます。本書はリポジトリの開発フローと規約をまとめたものです。
 
@@ -32,13 +32,13 @@ crates/
       calendar.rs                 # VCALENDAR header/footer, format_vevent, format_calendar, insert_event
       parser.rs                   # parse_events, parse_indices
       query.rs                    # sort_events / SortKey / remove_event_by_* ヘルパ
-  makeholiday/                    # CLI バイナリクレート
+  icscli/                         # CLI バイナリクレート（v0.2.0 で `makeholiday` から改名 — ADR-027 参照）
     Cargo.toml
     src/
       main.rs                     # Composition Root — リポジトリ配線とサブコマンド振り分け
       lib.rs                      # ライブラリ表面（下記モジュールを re-export）
-      error.rs                    # MhError（ADR-012）
-      icons.rs                    # makeholiday namespace の PRESET_ICONS テーブル
+      error.rs                    # IcsError（ADR-012）
+      icons.rs                    # icscli namespace の PRESET_ICONS テーブル
       input.rs                    # 日付文字列パーサ（プレゼンテーションとアプリで共有）
       application/
         ports.rs                  # CalendarRepository trait（ADR-011）

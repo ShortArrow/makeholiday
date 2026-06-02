@@ -8,7 +8,7 @@ use ics_core::{self as ics, VEvent};
 
 use crate::application::ports::CalendarRepository;
 use crate::display::format_event_line;
-use crate::error::{MhError, Result};
+use crate::error::{IcsError, Result};
 use crate::icons;
 
 /// Runtime context for status output and interactive-prompt policy.
@@ -53,7 +53,7 @@ fn resolve_add_params(
 ) -> Result<(String, NaiveDate, Option<NaiveDate>)> {
     let interactive = summary.is_none() || start.is_none();
     if interactive && !allow_prompts {
-        return Err(MhError::InvalidInput(
+        return Err(IcsError::InvalidInput(
             "missing required arguments: pass --summary and --start (no TTY for interactive prompts)"
                 .to_string(),
         ));
@@ -61,15 +61,17 @@ fn resolve_add_params(
     let summary = match summary {
         Some(s) => s.to_string(),
         None => {
-            write!(writer, "Summary: ").map_err(|e| MhError::io("<stdin>", e))?;
-            writer.flush().map_err(|e| MhError::io("<stdin>", e))?;
+            write!(writer, "Summary: ").map_err(|e| IcsError::io("<stdin>", e))?;
+            writer.flush().map_err(|e| IcsError::io("<stdin>", e))?;
             let mut line = String::new();
             reader
                 .read_line(&mut line)
-                .map_err(|e| MhError::io("<stdin>", e))?;
+                .map_err(|e| IcsError::io("<stdin>", e))?;
             let trimmed = line.trim().to_string();
             if trimmed.is_empty() {
-                return Err(MhError::InvalidInput("Summary cannot be empty".to_string()));
+                return Err(IcsError::InvalidInput(
+                    "Summary cannot be empty".to_string(),
+                ));
             }
             trimmed
         }
@@ -77,13 +79,13 @@ fn resolve_add_params(
     let start = match start {
         Some(s) => s,
         None => {
-            write!(writer, "Start date: ").map_err(|e| MhError::io("<stdin>", e))?;
-            writer.flush().map_err(|e| MhError::io("<stdin>", e))?;
+            write!(writer, "Start date: ").map_err(|e| IcsError::io("<stdin>", e))?;
+            writer.flush().map_err(|e| IcsError::io("<stdin>", e))?;
             let mut line = String::new();
             reader
                 .read_line(&mut line)
-                .map_err(|e| MhError::io("<stdin>", e))?;
-            crate::input::parse_date(line.trim()).map_err(MhError::InvalidInput)?
+                .map_err(|e| IcsError::io("<stdin>", e))?;
+            crate::input::parse_date(line.trim()).map_err(IcsError::InvalidInput)?
         }
     };
     let end = match end {
@@ -91,17 +93,17 @@ fn resolve_add_params(
         None if !interactive => None,
         None => {
             write!(writer, "End date (empty for single day): ")
-                .map_err(|e| MhError::io("<stdin>", e))?;
-            writer.flush().map_err(|e| MhError::io("<stdin>", e))?;
+                .map_err(|e| IcsError::io("<stdin>", e))?;
+            writer.flush().map_err(|e| IcsError::io("<stdin>", e))?;
             let mut line = String::new();
             reader
                 .read_line(&mut line)
-                .map_err(|e| MhError::io("<stdin>", e))?;
+                .map_err(|e| IcsError::io("<stdin>", e))?;
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 None
             } else {
-                Some(crate::input::parse_date(trimmed).map_err(MhError::InvalidInput)?)
+                Some(crate::input::parse_date(trimmed).map_err(IcsError::InvalidInput)?)
             }
         }
     };
@@ -134,7 +136,7 @@ pub fn add<R: CalendarRepository>(
 
     let dtend = match end {
         Some(e) if e < start => {
-            return Err(MhError::InvalidInput(
+            return Err(IcsError::InvalidInput(
                 "--end must not be before --start".to_string(),
             ));
         }
@@ -201,7 +203,7 @@ pub fn edit<R: CalendarRepository>(
 ) -> Result<()> {
     let mut cal = repo.load()?;
     if index == 0 || index > cal.events.len() {
-        return Err(MhError::NotFound(format!(
+        return Err(IcsError::NotFound(format!(
             "Index {index} out of range (1-{})",
             cal.events.len()
         )));
@@ -214,7 +216,7 @@ pub fn edit<R: CalendarRepository>(
     match (patch.start, patch.end) {
         (Some(new_start), Some(new_end_incl)) => {
             if new_end_incl < new_start {
-                return Err(MhError::InvalidInput(
+                return Err(IcsError::InvalidInput(
                     "--end must not be before --start".to_string(),
                 ));
             }
@@ -229,7 +231,7 @@ pub fn edit<R: CalendarRepository>(
         }
         (None, Some(new_end_incl)) => {
             if new_end_incl < event.dtstart {
-                return Err(MhError::InvalidInput(
+                return Err(IcsError::InvalidInput(
                     "--end must not be before --start".to_string(),
                 ));
             }
@@ -282,7 +284,7 @@ pub fn list<R: CalendarRepository>(
     };
     if json {
         serde_json::to_string_pretty(&events)
-            .map_err(|e| MhError::InvalidInput(format!("JSON error: {e}")))
+            .map_err(|e| IcsError::InvalidInput(format!("JSON error: {e}")))
     } else {
         let output = events
             .iter()
@@ -305,14 +307,14 @@ pub fn remove<R: CalendarRepository>(
 
     let (new_cal, removed_desc) = match (summary, target) {
         (Some(_), Some(_)) => {
-            return Err(MhError::Conflict(
+            return Err(IcsError::Conflict(
                 "Cannot specify both --summary and index target".to_string(),
             ));
         }
         (Some(s), None) => {
             let removed: Vec<_> = events.iter().filter(|e| e.summary == s).collect();
             if removed.is_empty() {
-                return Err(MhError::NotFound(format!(
+                return Err(IcsError::NotFound(format!(
                     "No event found with summary: {s}"
                 )));
             }
@@ -334,13 +336,13 @@ pub fn remove<R: CalendarRepository>(
         }
         (None, None) => {
             if !ctx.allow_prompts {
-                return Err(MhError::InvalidInput(
+                return Err(IcsError::InvalidInput(
                     "missing required arguments: pass <INDEX> or --summary (no TTY for interactive prompts)"
                         .to_string(),
                 ));
             }
             if events.is_empty() {
-                return Err(MhError::NotFound("No events to remove".to_string()));
+                return Err(IcsError::NotFound("No events to remove".to_string()));
             }
             for (i, e) in events.iter().enumerate() {
                 eprintln!("{}: {}", i + 1, format_event_line(e));
@@ -350,7 +352,7 @@ pub fn remove<R: CalendarRepository>(
             io::stdin()
                 .lock()
                 .read_line(&mut line)
-                .map_err(|e| MhError::io("<stdin>", e))?;
+                .map_err(|e| IcsError::io("<stdin>", e))?;
             let trimmed = line.trim();
             if trimmed == "q" || trimmed.is_empty() {
                 return Ok(());
@@ -386,7 +388,7 @@ mod tests {
         let repo = temp_repo(&dir, "test.ics");
         init(&repo).unwrap();
         let cal = repo.load().unwrap();
-        assert_eq!(cal.prodid, "-//makeholiday//EN");
+        assert_eq!(cal.prodid, "-//icscli//EN");
         assert_eq!(cal.version, "2.0");
         assert!(cal.events.is_empty());
     }
@@ -397,7 +399,7 @@ mod tests {
         let repo = temp_repo(&dir, "test.ics");
         init(&repo).unwrap();
         let result = init(&repo);
-        assert!(matches!(result, Err(MhError::AlreadyExists { .. })));
+        assert!(matches!(result, Err(IcsError::AlreadyExists { .. })));
     }
 
     fn add_free(repo: &FileCalendarRepository, summary: &str, start: NaiveDate) {
@@ -496,7 +498,7 @@ mod tests {
             vec![],
             None,
         );
-        assert!(matches!(result, Err(MhError::InvalidInput(_))));
+        assert!(matches!(result, Err(IcsError::InvalidInput(_))));
     }
 
     #[test]
@@ -696,7 +698,7 @@ mod tests {
             ..EditPatch::default()
         };
         let result = edit(&repo, RunContext::default(), 99, patch);
-        assert!(matches!(result, Err(MhError::NotFound(_))));
+        assert!(matches!(result, Err(IcsError::NotFound(_))));
     }
 
     #[test]
@@ -712,6 +714,6 @@ mod tests {
             ..EditPatch::default()
         };
         let result = edit(&repo, RunContext::default(), 1, patch);
-        assert!(matches!(result, Err(MhError::InvalidInput(_))));
+        assert!(matches!(result, Err(IcsError::InvalidInput(_))));
     }
 }

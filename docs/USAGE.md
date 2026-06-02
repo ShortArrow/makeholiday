@@ -2,11 +2,11 @@
 
 # Usage Reference
 
-Comprehensive command reference for `makeholiday`. For installation see [SETUP.md](SETUP.md). For the short overview see the [README](../README.md).
+Comprehensive command reference for `icscli`. For installation see [SETUP.md](SETUP.md). For the short overview see the [README](../README.md).
 
 ## Conventions
 
-- All examples assume `makeholiday` is on your `PATH`. If running from a checkout, substitute `cargo run --` (e.g., `cargo run -- list`).
+- All examples assume `icscli` is on your `PATH`. If running from a checkout, substitute `cargo run --` (e.g., `cargo run -- list`).
 - Commands write to **stdout** for successful, user-readable output. Diagnostics (`Added: ...`, `Removed: ...`) and prompts go to **stderr**.
 - Exit code is `0` on success, `1` on any user-facing error.
 
@@ -34,11 +34,11 @@ Invalid dates are rejected with `invalid date '<input>' (expected YYYY-MM-DD or 
 Create a new ICS calendar file.
 
 ```sh
-makeholiday init
-makeholiday --file holidays.ics init
+icscli init
+icscli --file holidays.ics init
 ```
 
-- Creates a `VCALENDAR` with `VERSION:2.0` and `PRODID:-//makeholiday//EN`.
+- Creates a `VCALENDAR` with `VERSION:2.0` and `PRODID:-//icscli//EN`.
 - Fails if the target file already exists. To re-initialize, remove the file first.
 
 ### `add`
@@ -46,7 +46,7 @@ makeholiday --file holidays.ics init
 Append a `VEVENT` to the calendar.
 
 ```sh
-makeholiday add [--summary <TEXT>] [--start <DATE>] [--end <DATE>]
+icscli add [--summary <TEXT>] [--start <DATE>] [--end <DATE>]
                 [--busystatus <STATUS>] [--class <CLASS>]
                 [--category <NAME> ...] [--icon <NAME>]
 ```
@@ -59,16 +59,16 @@ makeholiday add [--summary <TEXT>] [--start <DATE>] [--end <DATE>]
 | `--busystatus <STATUS>` | `free` \| `tentative` \| `busy` \| `oof` \| `working` | Default: `free`. Emits both `TRANSP` and `X-MICROSOFT-CDO-BUSYSTATUS`. |
 | `--class <CLASS>` | `public` \| `private` \| `confidential` | Optional. Emits `CLASS:`. |
 | `--category <NAME>` | string, repeatable | Multiple values join into a single `CATEGORIES:` line, comma-separated. |
-| `--icon <NAME>` | string | Emits `X-MAKEHOLIDAY-ICON:<NAME>`. See [`icons`](#icons) for preset names; arbitrary values also work. |
+| `--icon <NAME>` | string | Emits `X-ICSCLI-ICON:<NAME>`. See [`icons`](#icons) for preset names; arbitrary values also work. |
 
 #### Examples
 
 ```sh
 # Single-day event with defaults
-makeholiday add --summary "New Year's Day" --start 2026-01-01
+icscli add --summary "New Year's Day" --start 2026-01-01
 
 # Multi-day range, OOF, private, with categories and icon
-makeholiday add \
+icscli add \
     --summary "Business trip" \
     --start 2026-05-10 --end 2026-05-12 \
     --busystatus oof --class private \
@@ -76,7 +76,7 @@ makeholiday add \
     --icon airplane
 
 # Interactive: prompts on stderr for Summary, Start date, End date
-makeholiday add
+icscli add
 ```
 
 #### Behavior
@@ -92,7 +92,7 @@ makeholiday add
 Enumerate events from the calendar.
 
 ```sh
-makeholiday list [--sort <FIELD> ...] [--desc] [--json]
+icscli list [--sort <FIELD> ...] [--desc] [--json]
 ```
 
 | Flag | Notes |
@@ -134,7 +134,7 @@ JSON (`--json`):
 Print the bundled preset icon names.
 
 ```sh
-makeholiday icons
+icscli icons
 ```
 
 The output lists each icon name followed by its Japanese description, e.g. `airplane    出張・旅行`. These are convenience presets; `add --icon` also accepts arbitrary strings.
@@ -144,7 +144,7 @@ The output lists each icon name followed by its Japanese description, e.g. `airp
 Delete events from the calendar.
 
 ```sh
-makeholiday remove [<INDEX_SPEC>] [--summary <TEXT>]
+icscli remove [<INDEX_SPEC>] [--summary <TEXT>]
 ```
 
 | Argument / Flag | Notes |
@@ -156,15 +156,15 @@ makeholiday remove [<INDEX_SPEC>] [--summary <TEXT>]
 
 ```sh
 # By index
-makeholiday remove 1
-makeholiday remove 2,4
-makeholiday remove 1,3-5,8
+icscli remove 1
+icscli remove 2,4
+icscli remove 1,3-5,8
 
 # By summary (all matching events)
-makeholiday remove --summary "New Year's Day"
+icscli remove --summary "New Year's Day"
 
 # Interactive: lists events and prompts for an index spec on stderr
-makeholiday remove
+icscli remove
 ```
 
 #### Errors
@@ -175,12 +175,12 @@ makeholiday remove
 
 ## File Format
 
-`makeholiday` reads and writes RFC 5545 iCalendar files with the following conventions:
+`icscli` reads and writes RFC 5545 iCalendar files with the following conventions:
 
 - Line endings: `CRLF` (`\r\n`) on output, both accepted on input.
 - Wrapping: long property lines are not folded (input that uses RFC 5545 line folding is currently *not* unfolded; expanded handling tracked in [PRD §5.2](PRD.md#52-planned)).
 - All `VEVENT` entries are all-day: `DTSTART;VALUE=DATE`, `DTEND;VALUE=DATE`.
-- Properties emitted, in order: `UID`, `DTSTAMP`, `DTSTART`, `DTEND`, `SUMMARY`, `TRANSP`, `X-MICROSOFT-CDO-BUSYSTATUS`, then optional `CLASS`, `CATEGORIES`, `X-MAKEHOLIDAY-ICON`.
+- Properties emitted, in order: `UID`, `DTSTAMP`, `DTSTART`, `DTEND`, `SUMMARY`, `TRANSP`, `X-MICROSOFT-CDO-BUSYSTATUS`, then optional `CLASS`, `CATEGORIES`, `X-ICSCLI-ICON`.
 
 ## Exit Codes
 

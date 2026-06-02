@@ -3,7 +3,7 @@ use predicates::prelude::*;
 use tempfile::TempDir;
 
 fn cmd() -> Command {
-    Command::cargo_bin("makeholiday").unwrap()
+    Command::cargo_bin("icscli").unwrap()
 }
 
 #[test]

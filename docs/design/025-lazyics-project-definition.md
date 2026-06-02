@@ -3,6 +3,7 @@
 - Status: **Accepted**
 - Date: 2026-05-29
 - Supersedes: [ADR-022](022-tui-front-end-policy.md) (TUI front-end policy)
+- Amended: 2026-06-02 — [ADR-027](027-makeholiday-to-icscli-rename.md) renamed the CLI crate `makeholiday` → `icscli`. References below to `makeholiday`'s library API and `makeholiday::application::use_cases` should be read as `icscli::application::use_cases` from v0.2.0 onward.
 
 ## Context
 

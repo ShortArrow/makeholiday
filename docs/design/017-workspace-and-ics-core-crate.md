@@ -2,6 +2,7 @@
 
 - Status: **Accepted**
 - Date: 2026-05-28
+- Amended: 2026-06-02 — [ADR-027](027-makeholiday-to-icscli-rename.md) renamed the CLI crate from `makeholiday` to `icscli`. The architectural decisions in this ADR (workspace shape, `ics-core` scope, error type wrapping, split timing) are unaffected. References below to the `makeholiday` crate / binary should be read as the `icscli` crate / binary from v0.2.0 onward; original prose preserved for historical accuracy.
 
 ## Context
 

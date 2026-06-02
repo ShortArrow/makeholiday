@@ -2,7 +2,7 @@
 
 # Setup
 
-How to get `makeholiday` running on your machine. For day-to-day commands see [USAGE.md](USAGE.md). For development workflow see [CONTRIBUTING.md](CONTRIBUTING.md).
+How to get `icscli` running on your machine. For day-to-day commands see [USAGE.md](USAGE.md). For development workflow see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Prerequisites
 
@@ -27,10 +27,10 @@ cargo --version
 ```sh
 git clone https://github.com/ShortArrow/makeholiday.git
 cd makeholiday
-cargo install --path .
+cargo install --path crates/icscli
 ```
 
-This places the `makeholiday` binary into `~/.cargo/bin/` (or `%USERPROFILE%\.cargo\bin\` on Windows). Make sure that directory is on your `PATH`.
+This places the `icscli` binary into `~/.cargo/bin/` (or `%USERPROFILE%\.cargo\bin\` on Windows). Make sure that directory is on your `PATH`. The repository name remains `makeholiday` (the historical name of the v0.1.x CLI); the binary built from the workspace is `icscli`.
 
 ### From crates.io
 
@@ -39,15 +39,15 @@ Not yet published. Track [PRD §5.2](PRD.md#52-planned) for status.
 ### Build without installing
 
 ```sh
-cargo build --release
-./target/release/makeholiday --help
+cargo build --release --bin icscli
+./target/release/icscli --help
 ```
 
 ## Verify
 
 ```sh
-makeholiday --help
-makeholiday icons
+icscli --help
+icscli icons
 ```
 
 A working install prints help text and a preset icon list without errors.
@@ -64,7 +64,7 @@ From a local checkout:
 
 ```sh
 git pull
-cargo install --path . --force
+cargo install --path crates/icscli --force
 ```
 
 `--force` is required because `cargo install` refuses to overwrite an existing binary by default.
@@ -72,11 +72,11 @@ cargo install --path . --force
 ## Uninstall
 
 ```sh
-cargo uninstall makeholiday
+cargo uninstall icscli
 ```
 
 ## Troubleshooting
 
 - **`error: linker 'cc' not found`** — install your platform's C build tools (see Prerequisites).
-- **`makeholiday: command not found`** after install — confirm that `~/.cargo/bin` is on `PATH`.
+- **`icscli: command not found`** after install — confirm that `~/.cargo/bin` is on `PATH`.
 - **Toolchain too old** — `rustup update stable` to refresh.

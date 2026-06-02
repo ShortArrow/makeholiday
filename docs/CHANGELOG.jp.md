@@ -6,7 +6,13 @@
 
 形式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に従い、`1.0.0` 以降は [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に準拠します。1.0 以前は破壊的変更を含む場合があります（[ADR-004](design/004-trunk-based-and-semver.md) 参照）。
 
-## [Unreleased]
+## [Unreleased — v0.2.0 トラック]
+
+### 変更
+
+- **破壊的: CLI バイナリ `makeholiday` を `icscli` に改名**（[ADR-027](design/027-makeholiday-to-icscli-rename.md)）。workspace member は `crates/makeholiday/` から `crates/icscli/` へ移動。パッケージ名、`[[bin]]` 名、ライブラリ import path（`use icscli::*`）、エラー型（`MhError` → `IcsError`）も同時改名。crates.io Trusted Publisher binding を保つため、リポジトリは `github.com/ShortArrow/makeholiday` のまま据え置き。`makeholiday` は crates.io 未公開のため、Cargo migration shim は不要。
+- **破壊的: ベンダー X-property `X-MAKEHOLIDAY-ICON` を `X-ICSCLI-ICON` に改名**。ADR-027 の方針通り、pre-1.0 のコヒーレンスを後方互換より優先。入力 .ics ファイル中の旧 `X-MAKEHOLIDAY-ICON` は `VEvent.unknown` 経由で raw round-trip されるが typed icon semantics は失われる。icon writer は常に `X-ICSCLI-ICON` を出力。
+- **破壊的: 新規初期化カレンダーの PRODID を `-//makeholiday//EN` から `-//icscli//EN` に変更**。
 
 ## [0.1.0] - 2026-05-29
 

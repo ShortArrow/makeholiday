@@ -80,7 +80,7 @@ mod tests {
     fn vcal(events: Vec<VEvent>) -> VCalendar {
         VCalendar {
             events,
-            ..VCalendar::new("-//makeholiday//EN")
+            ..VCalendar::new("-//icscli//EN")
         }
     }
 

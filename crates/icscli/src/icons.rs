@@ -1,7 +1,7 @@
 use ics_core::{RawProperty, VEvent};
 
-/// Wire-format property name for the makeholiday icon extension.
-pub const ICON_PROPERTY: &str = "X-MAKEHOLIDAY-ICON";
+/// Wire-format property name for the icscli icon extension.
+pub const ICON_PROPERTY: &str = "X-ICSCLI-ICON";
 
 pub const PRESET_ICONS: &[(&str, &str)] = &[
     ("airplane", "出張・旅行"),
@@ -28,8 +28,8 @@ pub fn format_icons_list() -> String {
 
 /// Read the icon associated with `event`, if any.
 ///
-/// Per ADR-017's supersede of ADR-001 rule 6, `X-MAKEHOLIDAY-ICON` is
-/// a makeholiday-side concern: it lives in `event.unknown` (the generic
+/// Per ADR-017's supersede of ADR-001 rule 6 and ADR-027, `X-ICSCLI-ICON`
+/// is an icscli-side concern: it lives in `event.unknown` (the generic
 /// raw-property bucket) and this helper is the read side.
 pub fn read_icon(event: &VEvent) -> Option<&str> {
     event
@@ -39,7 +39,7 @@ pub fn read_icon(event: &VEvent) -> Option<&str> {
         .map(|p| p.value.as_str())
 }
 
-/// Write `icon` into `event`. Replaces an existing `X-MAKEHOLIDAY-ICON`
+/// Write `icon` into `event`. Replaces an existing `X-ICSCLI-ICON`
 /// entry if present; otherwise appends a new one with `source_index`
 /// set to one past the current maximum so the formatter emits it after
 /// existing unknown properties.

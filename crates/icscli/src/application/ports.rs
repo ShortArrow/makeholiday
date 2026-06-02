@@ -14,12 +14,12 @@ use crate::error::Result;
 /// different repository instance.
 pub trait CalendarRepository {
     /// Create a new empty calendar at the store. Fails with
-    /// `MhError::AlreadyExists` if the store already has a calendar.
+    /// `IcsError::AlreadyExists` if the store already has a calendar.
     fn create(&self) -> Result<()>;
 
     /// Load and parse the stored calendar into a typed `VCalendar`.
     ///
-    /// Parse errors surface as `MhError::Parse` (wrapping `ics_core::Error`).
+    /// Parse errors surface as `IcsError::Parse` (wrapping `ics_core::Error`).
     fn load(&self) -> Result<VCalendar>;
 
     /// Atomically replace the stored calendar with `calendar`.

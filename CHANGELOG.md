@@ -6,7 +6,13 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from `1.0.0` onward. Pre-1.0 releases may include breaking changes; see [ADR-004](docs/design/004-trunk-based-and-semver.md).
 
-## [Unreleased]
+## [Unreleased — v0.2.0 track]
+
+### Changed
+
+- **Breaking: renamed CLI binary `makeholiday` → `icscli`** ([ADR-027](docs/design/027-makeholiday-to-icscli-rename.md)). The workspace member moves from `crates/makeholiday/` to `crates/icscli/`; package name, `[[bin]]` name, library import path (`use icscli::*`), and error type (`MhError` → `IcsError`) all rename together. The repository remains `github.com/ShortArrow/makeholiday` to preserve crates.io Trusted Publisher bindings. `makeholiday` was never published to crates.io, so no Cargo migration shim is required.
+- **Breaking: renamed vendor X-property `X-MAKEHOLIDAY-ICON` → `X-ICSCLI-ICON`**. Per ADR-027, pre-1.0 coherence beats backward compatibility. Old `X-MAKEHOLIDAY-ICON` properties in inbound `.ics` files survive via `VEvent.unknown` (raw round-trip) but lose typed icon semantics; the icon writer always emits `X-ICSCLI-ICON`.
+- **Breaking: PRODID changed from `-//makeholiday//EN` to `-//icscli//EN`** for newly initialized calendars.
 
 ## [0.1.0] - 2026-05-29
 

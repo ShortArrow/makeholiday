@@ -2,10 +2,10 @@ use std::io::IsTerminal;
 
 use clap::Parser;
 
-use makeholiday::application::use_cases::{self, RunContext};
-use makeholiday::icons;
-use makeholiday::infrastructure::FileCalendarRepository;
-use makeholiday::presentation::{Cli, Commands};
+use icscli::application::use_cases::{self, RunContext};
+use icscli::icons;
+use icscli::infrastructure::FileCalendarRepository;
+use icscli::presentation::{Cli, Commands};
 
 fn main() {
     let cli = Cli::parse();

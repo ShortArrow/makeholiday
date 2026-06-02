@@ -1,14 +1,16 @@
 # icslint
 
-`icslint` is the lint tool of the [makeholiday] ecosystem — it flags
+`icslint` is the lint tool of the `ics*` ecosystem — it flags
 RFC 5545 cardinality violations, vendor-only extensions, TEXT-escape
 mistakes, and structural quirks in `.ics` files. It is designed for
 CI pipelines that consume calendar data from external sources and
 need an actionable, machine-readable quality gate.
 
-**Status:** in-tree at `crates/icslint/` of `ShortArrow/makeholiday`
-through the v0.2.0 development cycle (ADR-017). Splits to its own
-repository once the ecosystem is mutually stable.
+**Status:** in-tree at `crates/icslint/` of
+[`ShortArrow/makeholiday`](https://github.com/ShortArrow/makeholiday)
+(repository name preserved per ADR-027) through the v0.2.0 development
+cycle (ADR-017). Splits to its own repository once the ecosystem is
+mutually stable.
 
 ## Install
 
@@ -142,5 +144,3 @@ registry entry; no plugin machinery is involved.
 ## License
 
 Dual-licensed under `MIT OR Apache-2.0`.
-
-[makeholiday]: https://github.com/ShortArrow/makeholiday

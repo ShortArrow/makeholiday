@@ -12,7 +12,7 @@ use ics_core::{self as ics, VCalendar};
 use tempfile::NamedTempFile;
 
 use crate::application::ports::CalendarRepository;
-use crate::error::{MhError, Result};
+use crate::error::{IcsError, Result};
 
 pub struct FileCalendarRepository {
     path: PathBuf,
@@ -32,24 +32,24 @@ impl FileCalendarRepository {
     /// already exists.
     fn atomic_write(&self, content: &str, no_clobber: bool) -> Result<()> {
         let dir = self.path.parent().unwrap_or_else(|| Path::new("."));
-        let mut tmp = NamedTempFile::new_in(dir).map_err(|e| MhError::io(&self.path, e))?;
+        let mut tmp = NamedTempFile::new_in(dir).map_err(|e| IcsError::io(&self.path, e))?;
         tmp.write_all(content.as_bytes())
-            .map_err(|e| MhError::io(&self.path, e))?;
+            .map_err(|e| IcsError::io(&self.path, e))?;
         tmp.as_file()
             .sync_all()
-            .map_err(|e| MhError::io(&self.path, e))?;
+            .map_err(|e| IcsError::io(&self.path, e))?;
 
         if no_clobber {
             tmp.persist_noclobber(&self.path).map_err(|e| {
                 if e.error.kind() == std::io::ErrorKind::AlreadyExists {
-                    MhError::already_exists(self.path.clone())
+                    IcsError::already_exists(self.path.clone())
                 } else {
-                    MhError::io(&self.path, e.error)
+                    IcsError::io(&self.path, e.error)
                 }
             })?;
         } else {
             tmp.persist(&self.path)
-                .map_err(|e| MhError::io(&self.path, e.error))?;
+                .map_err(|e| IcsError::io(&self.path, e.error))?;
         }
         Ok(())
     }
@@ -58,15 +58,15 @@ impl FileCalendarRepository {
 impl CalendarRepository for FileCalendarRepository {
     fn create(&self) -> Result<()> {
         if self.path.exists() {
-            return Err(MhError::already_exists(self.path.clone()));
+            return Err(IcsError::already_exists(self.path.clone()));
         }
-        let content = ics::format_calendar(&VCalendar::new("-//makeholiday//EN"));
+        let content = ics::format_calendar(&VCalendar::new("-//icscli//EN"));
         self.atomic_write(&content, true)
     }
 
     fn load(&self) -> Result<VCalendar> {
         let content =
-            std::fs::read_to_string(&self.path).map_err(|e| MhError::io(&self.path, e))?;
+            std::fs::read_to_string(&self.path).map_err(|e| IcsError::io(&self.path, e))?;
         let cal = ics::parse_calendar(&content)?;
         Ok(cal)
     }

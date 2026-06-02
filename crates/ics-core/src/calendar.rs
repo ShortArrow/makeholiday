@@ -136,7 +136,7 @@ mod tests {
     fn vcal(events: Vec<VEvent>) -> VCalendar {
         VCalendar {
             events,
-            ..VCalendar::new("-//makeholiday//EN")
+            ..VCalendar::new("-//icscli//EN")
         }
     }
 
@@ -214,7 +214,7 @@ mod tests {
         let event = make_event("x", (2026, 1, 1), (2026, 1, 2), "元日");
         let output = format_vevent(&event);
         assert!(!output.contains("CATEGORIES:"));
-        assert!(!output.contains("X-MAKEHOLIDAY-ICON:"));
+        assert!(!output.contains("X-ICSCLI-ICON:"));
     }
 
     #[test]

@@ -318,7 +318,19 @@ dependencies = [
 
 [[package]]
 name = "icscli"
-version = "0.0.0"
+version = "0.2.0-dev"
+dependencies = [
+ "assert_cmd",
+ "chrono",
+ "clap",
+ "ics-core",
+ "predicates",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "uuid",
+]
 
 [[package]]
 name = "icslint"
@@ -400,22 +412,6 @@ name = "log"
 version = "0.4.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
-
-[[package]]
-name = "makeholiday"
-version = "0.1.0"
-dependencies = [
- "assert_cmd",
- "chrono",
- "clap",
- "ics-core",
- "predicates",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "uuid",
-]
 
 [[package]]
 name = "memchr"

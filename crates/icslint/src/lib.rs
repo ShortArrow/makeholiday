@@ -5,7 +5,7 @@
 //!
 //! See ADR-026 (`docs/design/026-icslint-project-definition.md`) for the
 //! project definition, rule families, severity tiers, and the relationship
-//! to `ics-core` and `makeholiday`.
+//! to `ics-core` and `icscli`.
 
 pub mod diagnostic;
 pub mod reporter;

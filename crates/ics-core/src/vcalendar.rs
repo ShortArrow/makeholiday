@@ -20,7 +20,7 @@ pub struct VCalendar {
     /// Required RFC field. Typically `"2.0"`.
     pub version: String,
 
-    /// Required RFC field. Producer ID, e.g. `-//makeholiday//EN`.
+    /// Required RFC field. Producer ID, e.g. `-//icscli//EN`.
     pub prodid: String,
 
     /// Optional RFC field. Calendar scale; almost always `GREGORIAN`.

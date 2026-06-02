@@ -2,11 +2,11 @@
 
 # 使い方リファレンス
 
-`makeholiday` の全コマンドを網羅したリファレンスです。インストールは [SETUP.md](SETUP.jp.md)、概要は [README](README.jp.md) を参照してください。
+`icscli` の全コマンドを網羅したリファレンスです。インストールは [SETUP.md](SETUP.jp.md)、概要は [README](README.jp.md) を参照してください。
 
 ## 慣例
 
-- 例はすべて `makeholiday` が `PATH` に通っている前提です。チェックアウトから直接動かす場合は `cargo run --` に置き換えてください（例: `cargo run -- list`）。
+- 例はすべて `icscli` が `PATH` に通っている前提です。チェックアウトから直接動かす場合は `cargo run --` に置き換えてください（例: `cargo run -- list`）。
 - ユーザー向けの正常出力は **stdout** に書きます。診断メッセージ（`Added: ...`, `Removed: ...`）とプロンプトは **stderr** に出します。
 - 終了コードは成功時 `0`、ユーザー起因のエラー時 `1`。
 
@@ -34,11 +34,11 @@
 ICS カレンダーファイルを新規作成。
 
 ```sh
-makeholiday init
-makeholiday --file holidays.ics init
+icscli init
+icscli --file holidays.ics init
 ```
 
-- `VERSION:2.0` と `PRODID:-//makeholiday//EN` をもつ `VCALENDAR` を作成。
+- `VERSION:2.0` と `PRODID:-//icscli//EN` をもつ `VCALENDAR` を作成。
 - 対象ファイルが既に存在すると失敗します。再初期化したい場合は先にファイルを削除してください。
 
 ### `add`
@@ -46,7 +46,7 @@ makeholiday --file holidays.ics init
 `VEVENT` をカレンダーに追加。
 
 ```sh
-makeholiday add [--summary <TEXT>] [--start <DATE>] [--end <DATE>]
+icscli add [--summary <TEXT>] [--start <DATE>] [--end <DATE>]
                 [--busystatus <STATUS>] [--class <CLASS>]
                 [--category <NAME> ...] [--icon <NAME>]
 ```
@@ -59,16 +59,16 @@ makeholiday add [--summary <TEXT>] [--start <DATE>] [--end <DATE>]
 | `--busystatus <STATUS>` | `free` \| `tentative` \| `busy` \| `oof` \| `working` | デフォルト `free`。`TRANSP` と `X-MICROSOFT-CDO-BUSYSTATUS` を両方出力。 |
 | `--class <CLASS>` | `public` \| `private` \| `confidential` | 任意。`CLASS:` を出力。 |
 | `--category <NAME>` | 文字列、繰り返し可 | 複数値はカンマ区切りで 1 行の `CATEGORIES:` にまとめます。 |
-| `--icon <NAME>` | 文字列 | `X-MAKEHOLIDAY-ICON:<NAME>` を出力。プリセット名は [`icons`](#icons) 参照。任意の文字列も可。 |
+| `--icon <NAME>` | 文字列 | `X-ICSCLI-ICON:<NAME>` を出力。プリセット名は [`icons`](#icons) 参照。任意の文字列も可。 |
 
 #### 例
 
 ```sh
 # 単日イベント（デフォルト）
-makeholiday add --summary "元日" --start 2026-01-01
+icscli add --summary "元日" --start 2026-01-01
 
 # 複数日範囲、OOF、private、カテゴリとアイコン付き
-makeholiday add \
+icscli add \
     --summary "出張" \
     --start 2026-05-10 --end 2026-05-12 \
     --busystatus oof --class private \
@@ -76,7 +76,7 @@ makeholiday add \
     --icon airplane
 
 # 対話モード: Summary / Start date / End date を stderr 上で順にプロンプト
-makeholiday add
+icscli add
 ```
 
 #### 挙動
@@ -92,7 +92,7 @@ makeholiday add
 カレンダー内のイベント一覧。
 
 ```sh
-makeholiday list [--sort <FIELD> ...] [--desc] [--json]
+icscli list [--sort <FIELD> ...] [--desc] [--json]
 ```
 
 | フラグ | 補足 |
@@ -134,7 +134,7 @@ JSON (`--json`):
 同梱のプリセットアイコン名を表示。
 
 ```sh
-makeholiday icons
+icscli icons
 ```
 
 各アイコン名とその日本語説明を出力します（例: `airplane    出張・旅行`）。これらは便宜上のプリセットで、`add --icon` は任意の文字列も受け付けます。
@@ -144,7 +144,7 @@ makeholiday icons
 カレンダーからイベントを削除。
 
 ```sh
-makeholiday remove [<INDEX_SPEC>] [--summary <TEXT>]
+icscli remove [<INDEX_SPEC>] [--summary <TEXT>]
 ```
 
 | 引数 / フラグ | 補足 |
@@ -156,15 +156,15 @@ makeholiday remove [<INDEX_SPEC>] [--summary <TEXT>]
 
 ```sh
 # インデックス指定
-makeholiday remove 1
-makeholiday remove 2,4
-makeholiday remove 1,3-5,8
+icscli remove 1
+icscli remove 2,4
+icscli remove 1,3-5,8
 
 # サマリ指定（一致する全イベント）
-makeholiday remove --summary "元日"
+icscli remove --summary "元日"
 
 # 対話モード: イベント一覧を表示して stderr 上で番号を尋ねる
-makeholiday remove
+icscli remove
 ```
 
 #### エラー
@@ -175,12 +175,12 @@ makeholiday remove
 
 ## ファイル形式
 
-`makeholiday` は以下の慣例で RFC 5545 iCalendar を読み書きします:
+`icscli` は以下の慣例で RFC 5545 iCalendar を読み書きします:
 
 - 改行: 出力は `CRLF` (`\r\n`)、入力はどちらも受け付け。
 - 行折り返し: 長いプロパティ行の折り返しは現状未対応（RFC 5545 のラインフォールドの展開は将来対応 — [PRD §5.2](PRD.jp.md#52-計画中-planned)）。
 - 全 `VEVENT` は終日: `DTSTART;VALUE=DATE`, `DTEND;VALUE=DATE`。
-- 出力順: `UID`, `DTSTAMP`, `DTSTART`, `DTEND`, `SUMMARY`, `TRANSP`, `X-MICROSOFT-CDO-BUSYSTATUS`、続けて任意の `CLASS`, `CATEGORIES`, `X-MAKEHOLIDAY-ICON`。
+- 出力順: `UID`, `DTSTAMP`, `DTSTART`, `DTEND`, `SUMMARY`, `TRANSP`, `X-MICROSOFT-CDO-BUSYSTATUS`、続けて任意の `CLASS`, `CATEGORIES`, `X-ICSCLI-ICON`。
 
 ## 終了コード
 

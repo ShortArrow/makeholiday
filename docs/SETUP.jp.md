@@ -2,7 +2,7 @@
 
 # セットアップ
 
-`makeholiday` をローカルマシンで動かすまでの手順です。日常的なコマンドは [USAGE.md](USAGE.jp.md)、開発フローは [CONTRIBUTING.md](CONTRIBUTING.jp.md) を参照してください。
+`icscli` をローカルマシンで動かすまでの手順です。日常的なコマンドは [USAGE.md](USAGE.jp.md)、開発フローは [CONTRIBUTING.md](CONTRIBUTING.jp.md) を参照してください。
 
 ## 前提
 
@@ -27,10 +27,10 @@ cargo --version
 ```sh
 git clone https://github.com/ShortArrow/makeholiday.git
 cd makeholiday
-cargo install --path .
+cargo install --path crates/icscli
 ```
 
-これで `makeholiday` バイナリが `~/.cargo/bin/`（Windows では `%USERPROFILE%\.cargo\bin\`）に配置されます。当該ディレクトリが `PATH` に含まれていることを確認してください。
+これで `icscli` バイナリが `~/.cargo/bin/`（Windows では `%USERPROFILE%\.cargo\bin\`）に配置されます。当該ディレクトリが `PATH` に含まれていることを確認してください。リポジトリ名は `makeholiday`（v0.1.x の CLI 名の歴史名）のままですが、workspace からビルドされるバイナリは `icscli` です。
 
 ### crates.io から
 
@@ -39,15 +39,15 @@ cargo install --path .
 ### インストールせずビルドのみ
 
 ```sh
-cargo build --release
-./target/release/makeholiday --help
+cargo build --release --bin icscli
+./target/release/icscli --help
 ```
 
 ## 動作確認
 
 ```sh
-makeholiday --help
-makeholiday icons
+icscli --help
+icscli icons
 ```
 
 ヘルプとプリセットアイコン一覧がエラーなく表示されれば OK です。
@@ -64,7 +64,7 @@ makeholiday icons
 
 ```sh
 git pull
-cargo install --path . --force
+cargo install --path crates/icscli --force
 ```
 
 `cargo install` は既存バイナリを既定で上書きしないため `--force` が必要です。
@@ -72,11 +72,11 @@ cargo install --path . --force
 ## アンインストール
 
 ```sh
-cargo uninstall makeholiday
+cargo uninstall icscli
 ```
 
 ## トラブルシューティング
 
 - **`error: linker 'cc' not found`** — 各プラットフォームの C ビルドツールを導入してください（前提セクション参照）。
-- インストール後に **`makeholiday: command not found`** — `~/.cargo/bin` が `PATH` に入っているか確認。
+- インストール後に **`icscli: command not found`** — `~/.cargo/bin` が `PATH` に入っているか確認。
 - **ツールチェインが古い** — `rustup update stable` で更新。

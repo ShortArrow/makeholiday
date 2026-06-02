@@ -1,7 +1,7 @@
-//! `MhError`: the makeholiday application-layer error type.
+//! `IcsError`: the icscli application-layer error type.
 //!
 //! Per ADR-012 and ADR-017's error type relationship. `ics_core::Error`
-//! wraps into `MhError::Parse` via `#[from]`. `std::io::Error` is wrapped
+//! wraps into `IcsError::Parse` via `#[from]`. `std::io::Error` is wrapped
 //! by hand because the I/O variant carries the offending file path
 //! alongside the underlying error.
 
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum MhError {
+pub enum IcsError {
     #[error("I/O error on {}: {source}", path.display())]
     Io {
         path: PathBuf,
@@ -35,7 +35,7 @@ pub enum MhError {
     AlreadyExists { path: PathBuf },
 }
 
-impl MhError {
+impl IcsError {
     /// Wrap an `io::Error` with the offending path.
     pub fn io(path: impl Into<PathBuf>, source: io::Error) -> Self {
         Self::Io {
@@ -50,4 +50,4 @@ impl MhError {
     }
 }
 
-pub type Result<T> = std::result::Result<T, MhError>;
+pub type Result<T> = std::result::Result<T, IcsError>;

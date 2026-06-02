@@ -1,6 +1,6 @@
 [ **English** | [日本語](PRD.jp.md) ]
 
-# Product Requirements Document — makeholiday
+# Product Requirements Document — icscli
 
 > Status: **Draft**. Sections 1–4 and 5.1 are settled; later sections still evolving.
 
@@ -13,20 +13,20 @@ iCalendar (RFC 5545) is the de-facto interchange format for calendar data, but t
 
 In practice, users who simply want to assemble or edit `.ics` files — for personal holidays, team calendars, or interoperability glue between calendar services — end up writing one-off scripts each time, or accepting lossy conversions.
 
-`makeholiday` exists to close that gap with a small, deliberate tool: a CLI for everyday ICS authoring on top of a typed core that treats vendor extensions as first-class, not as opaque strings.
+`icscli` exists to close that gap with a small, deliberate tool: a CLI for everyday ICS authoring on top of a typed core that treats vendor extensions as first-class, not as opaque strings. (The v0.1.x series shipped under the name `makeholiday`; renamed at v0.2.0 per [ADR-027](design/027-makeholiday-to-icscli-rename.md).)
 
 ## 2. Goals
 
 In priority order:
 
 1. **CLI UX (highest priority).** The CLI must be pleasant to use for everyday calendar authoring — discoverable subcommands, sensible defaults, both scriptable (full flags) and interactive modes. UX considerations override architectural neatness when they conflict.
-2. **Round-trip losslessness.** Reading and re-emitting an ICS file preserves order, whitespace where semantically meaningful, and *all* properties — including unknown and vendor-specific ones. A file passed through `makeholiday` is recognizable to its origin tool. See [ADR-001](design/001-vendor-extension-typing.md) for the typing-level commitments; ordering semantics are deferred to a future round-trip strategy ADR.
+2. **Round-trip losslessness.** Reading and re-emitting an ICS file preserves order, whitespace where semantically meaningful, and *all* properties — including unknown and vendor-specific ones. A file passed through `icscli` is recognizable to its origin tool. See [ADR-001](design/001-vendor-extension-typing.md) for the typing-level commitments; ordering semantics are deferred to a future round-trip strategy ADR.
 3. **Typed handling of vendor extensions.** Outlook / Google / iCloud extensions are modeled as distinct, type-safe values, not as raw `X-*` strings. The boundary between RFC 5545 and each vendor profile is explicit in the code and documented. See [ADR-001](design/001-vendor-extension-typing.md) for the model.
 4. **Library reusability.** The ICS handling core is consumable as an independent crate, so other tools can depend on it without pulling in CLI machinery.
 
 ## 3. Non-Goals
 
-Things `makeholiday` will not do, full stop. CalDAV / cloud-service synchronization is *not* on this list — it is staged for v0.3.0 per [§9 Roadmap](#9-roadmap).
+Things `icscli` will not do, full stop. CalDAV / cloud-service synchronization is *not* on this list — it is staged for v0.3.0 per [§9 Roadmap](#9-roadmap).
 
 - **GUI / WebUI.** No desktop application, no web interface. (A TUI is planned as a sibling binary — see [ADR-022](design/022-tui-front-end-policy.md).)
 - **Non-ICS calendar formats.** Microsoft `.msg`, legacy vCalendar 1.0, proprietary binary calendar formats are out of scope.
@@ -47,14 +47,14 @@ When the two personas conflict, the CLI persona wins.
 
 Implemented and covered by tests in `tests/cli.rs` and unit tests in `src/`:
 
-- **`init`** — create a new `VCALENDAR` file (`PRODID:-//makeholiday//EN`, `VERSION:2.0`).
+- **`init`** — create a new `VCALENDAR` file (`PRODID:-//icscli//EN`, `VERSION:2.0`).
 - **`add`** — append a `VEVENT` (all-day, single or multi-day). Supports:
   - `--summary`, `--start`, `--end` (inclusive on input, converted to RFC-exclusive `DTEND` internally)
   - Date input formats: `YYYY-MM-DD` and `YYYY/M/D`
   - `--busystatus` (`free` / `tentative` / `busy` / `oof` / `working`) emitting `TRANSP` + `X-MICROSOFT-CDO-BUSYSTATUS`
   - `--class` (`public` / `private` / `confidential`)
   - `--category` (repeatable)
-  - `--icon` (vendor extension `X-MAKEHOLIDAY-ICON`)
+  - `--icon` (vendor extension `X-ICSCLI-ICON`)
   - Interactive mode when `--summary` / `--start` are omitted
 - **`list`** — enumerate events. `--sort` (repeatable: `start` / `end` / `summary`), `--desc`, `--json`.
 - **`icons`** — print bundled preset icon names.
@@ -72,8 +72,8 @@ Items are listed in approximate priority. Acceptance criteria to be expanded as 
 - **Vendor extension support — iCloud profile.** First-class types for Apple-specific extensions (`X-APPLE-*`, `X-CALENDARSERVER-*`). Typing model defined in [ADR-001](design/001-vendor-extension-typing.md).
 - **RFC ↔ vendor extension boundary documentation.** A reference document, generated where possible from code, listing which properties live in RFC 5545 and which belong to which vendor profile. Boundary rules captured in [ADR-001](design/001-vendor-extension-typing.md).
 - **Reusable ICS handling library (`ics-core` crate).** The shared core lives in `crates/ics-core/` as an in-tree workspace member; external publication timing is settled by [ADR-017](design/017-workspace-and-ics-core-crate.md). Type shape per [ADR-001](design/001-vendor-extension-typing.md).
-- **Task management properties (`VTODO`).** Typed `VTodo` in `ics-core`; the makeholiday CLI exposes read-only display via `list --include-todos` (no editing subcommands). See [ADR-021](design/021-vtodo-scope.md).
-- **TUI front-end (`lazyics`).** Separate `lazyics` binary consuming `ics-core` and the `makeholiday` library's use cases, planned for v0.2.0. See [ADR-025](design/025-lazyics-project-definition.md). [ADR-022](design/022-tui-front-end-policy.md) is the predecessor (TUI policy, no launch date) and is superseded.
+- **Task management properties (`VTODO`).** Typed `VTodo` in `ics-core`; the `icscli` CLI exposes read-only display via `list --include-todos` (no editing subcommands). See [ADR-021](design/021-vtodo-scope.md).
+- **TUI front-end (`lazyics`).** Separate `lazyics` binary consuming `ics-core` and the `icscli` library's use cases, planned for v0.2.0. See [ADR-025](design/025-lazyics-project-definition.md). [ADR-022](design/022-tui-front-end-policy.md) is the predecessor (TUI policy, no launch date) and is superseded.
 
 ## 6. Non-Functional Requirements
 
@@ -100,11 +100,11 @@ Distinct from Non-Goals: these are explicitly *not* committed for any planned re
 
 ## 9. Roadmap
 
-`makeholiday` evolves in versioned milestones. Each milestone has a clear scope and is delivered as a series of minor releases.
+`icscli` evolves in versioned milestones. Each milestone has a clear scope and is delivered as a series of minor releases.
 
 ### v0.1.x — ICS Text Operations (current)
 
-The v0.1.x series scopes `makeholiday` as a high-fidelity local ICS file manager. The `ics-core` library aim is to be a typed lingua franca for RFC 5545 plus the major vendor extension dialects.
+The v0.1.x series (shipped under the name `makeholiday`) scopes the CLI as a high-fidelity local ICS file manager. The `ics-core` library aim is to be a typed lingua franca for RFC 5545 plus the major vendor extension dialects.
 
 - Lossless round-trip with typed vendor extensions ([ADR-001](design/001-vendor-extension-typing.md) Migration complete).
 - Parser correctness — RFC 5545 line folding, UTF-8 BOM handling, TEXT escape decode/encode (ADR-019, in progress).
@@ -118,9 +118,10 @@ The v0.1.x series scopes `makeholiday` as a high-fidelity local ICS file manager
 The v0.2.0 series shifts the project from a single CLI to a small ecosystem of tools all consuming the same `ics-core` library. The library graduates from in-tree workspace member to a published crate with its own repository.
 
 - **`ics-core` extracted to its own repository** and published to crates.io. The version contract for `ics-core` begins here, derived from the v0.1.x experience inside this repo. See [ADR-017](design/017-workspace-and-ics-core-crate.md) for the split trigger and lifecycle.
-- **`lazyics` — interactive TUI editor** for `.ics` files, inspired by `lazygit`. Naming convention: lazy-prefixed TUI tools. Ships as a **separate binary** (`cargo install lazyics`), built on `ratatui`, depending on the `makeholiday` library's use cases to mechanically prevent CLI/TUI divergence. See [ADR-025](design/025-lazyics-project-definition.md) (supersedes [ADR-022](design/022-tui-front-end-policy.md)).
+- **`icscli` — the renamed CLI** (was `makeholiday` in v0.1.x). The brand rename ([ADR-027](design/027-makeholiday-to-icscli-rename.md)) aligns the CLI with the rest of the `ics*` ecosystem. Functional surface preserved.
+- **`lazyics` — interactive TUI editor** for `.ics` files, inspired by `lazygit`. Naming convention: lazy-prefixed TUI tools. Ships as a **separate binary** (`cargo install lazyics`), built on `ratatui`, depending on the `icscli` library's use cases to mechanically prevent CLI/TUI divergence. See [ADR-025](design/025-lazyics-project-definition.md) (supersedes [ADR-022](design/022-tui-front-end-policy.md)).
 - **`icslint` — ICS lint tool** consuming `ics-core`. Surfaces vendor-prefix warnings ("this property is Microsoft-specific and will be ignored by Google clients") and RFC compliance hints. Four rule families ship at v0.2.0 — RFC 5545 cardinality/required, vendor hygiene, text encoding, structure. See [ADR-026](design/026-icslint-project-definition.md).
-- `makeholiday` itself continues evolving along the v0.1.x line — additive features like `search` / `filter`, `import` / `export`, calendar-level extensions land here too.
+- `icscli` itself continues evolving on the v0.1.x feature trajectory — additive features like `search` / `filter`, `import` / `export`, calendar-level extensions land here too.
 
 The three-tool launch is the "ecosystem" theme. The release-train discipline of [ADR-024](design/024-solo-phase-branching-carve-out.md) reactivates the moment `ics-core` lands in its own repository (the carve-out's first trigger).
 

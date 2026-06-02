@@ -1,6 +1,6 @@
 [ **English** | [日本語](CONTRIBUTING.jp.md) ]
 
-# Contributing to makeholiday
+# Contributing to icscli
 
 Thanks for taking the time to contribute. This document covers the development workflow and conventions used in this repository.
 
@@ -32,13 +32,13 @@ crates/
       calendar.rs                 # VCALENDAR header/footer, format_vevent, format_calendar, insert_event
       parser.rs                   # parse_events, parse_indices
       query.rs                    # sort_events / SortKey / remove_event_by_* helpers
-  makeholiday/                    # CLI binary crate
+  icscli/                         # CLI binary crate (renamed from `makeholiday` at v0.2.0 — see ADR-027)
     Cargo.toml
     src/
       main.rs                     # Composition Root — wires repository + dispatches subcommands
       lib.rs                      # Library surface (re-exports the modules below)
-      error.rs                    # MhError (ADR-012)
-      icons.rs                    # Makeholiday-namespace PRESET_ICONS table
+      error.rs                    # IcsError (ADR-012)
+      icons.rs                    # icscli-namespace PRESET_ICONS table
       input.rs                    # Shared date-string parser
       application/
         ports.rs                  # CalendarRepository trait (ADR-011)

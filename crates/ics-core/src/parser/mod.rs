@@ -362,7 +362,7 @@ mod tests {
     fn vcal(events: Vec<VEvent>) -> VCalendar {
         VCalendar {
             events,
-            ..VCalendar::new("-//makeholiday//EN")
+            ..VCalendar::new("-//icscli//EN")
         }
     }
 
@@ -502,17 +502,17 @@ mod tests {
     }
 
     #[test]
-    fn x_microsoft_stays_typed_x_makeholiday_lands_in_unknown() {
-        // Post-Step-5: X-MAKEHOLIDAY-ICON is no longer specially handled
+    fn x_microsoft_stays_typed_x_icscli_lands_in_unknown() {
+        // Post-Step-5: X-ICSCLI-ICON is no longer specially handled
         // in ics-core; it round-trips through VEvent.unknown like any
-        // other X-* property. Read/write is the makeholiday crate's job.
+        // other X-* property. Read/write is the icscli crate's job.
         let mut event = make_event("rt-typed", (2026, 4, 29), (2026, 4, 30), "昭和の日");
         event.microsoft = Some(MsExtensions {
             busystatus: Some(MsBusyStatus::Oof),
             unrecognized: vec![],
         });
         event.unknown.push(RawProperty {
-            name: "X-MAKEHOLIDAY-ICON".to_string(),
+            name: "X-ICSCLI-ICON".to_string(),
             params: vec![],
             value: "flag".to_string(),
             source_index: 1,
@@ -529,7 +529,7 @@ mod tests {
         let icon = parsed.events[0]
             .unknown
             .iter()
-            .find(|p| p.name == "X-MAKEHOLIDAY-ICON")
+            .find(|p| p.name == "X-ICSCLI-ICON")
             .map(|p| p.value.as_str());
         assert_eq!(icon, Some("flag"));
     }
