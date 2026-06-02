@@ -8,6 +8,7 @@
 //! to `ics-core` and `makeholiday`.
 
 pub mod diagnostic;
+pub mod reporter;
 pub mod rules;
 pub mod walker;
 

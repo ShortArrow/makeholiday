@@ -1,7 +1,8 @@
 //! `icslint` — composition root.
 //!
-//! Reads each input path, runs [`icslint::lint`] on the source, prints
-//! findings, and exits with the code dictated by ADR-026 §"Exit codes":
+//! Reads each input path, runs [`icslint::lint`] on the source, hands
+//! the resulting diagnostics off to the chosen [`reporter::Reporter`],
+//! and exits with the code dictated by ADR-026 §"Exit codes":
 //!
 //! - `0` — no diagnostics, or only info-level diagnostics.
 //! - `1` — at least one warning emitted (and not promoted to error).
@@ -16,6 +17,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
+use icslint::reporter::Format;
 use icslint::{Diagnostic, Severity, exit_code_for, lint};
 
 #[derive(Parser, Debug)]
@@ -35,6 +37,12 @@ struct Cli {
     /// Suppress info-level diagnostics from the output.
     #[arg(short, long, default_value_t = false)]
     quiet: bool,
+
+    /// Output format. `human` (default) prints compiler-style messages
+    /// to stderr; `json` and `github` print machine-readable output to
+    /// stdout.
+    #[arg(short = 'f', long = "format", value_enum, default_value_t = Format::Human)]
+    format: Format,
 }
 
 fn main() -> ExitCode {
@@ -60,9 +68,13 @@ fn main() -> ExitCode {
         }
     }
 
-    for (path, diag) in &all_diags {
-        report_human(path, diag);
-    }
+    let reporter = cli.format.reporter();
+    let mut stream = cli.format.stream();
+    // Reporter write errors (a closed pipe, full disk) cannot meaningfully
+    // change the exit code we owe the user; the diagnostics' own severity
+    // tier still drives the contract. Swallow IO errors here so a `| head`
+    // consumer does not flip a clean run to exit 3.
+    let _ = reporter.write(&mut *stream, &all_diags);
 
     if internal_error {
         return ExitCode::from(3);
@@ -79,20 +91,4 @@ fn read_source(path: &Path) -> std::io::Result<String> {
     } else {
         fs::read_to_string(path)
     }
-}
-
-fn report_human(path: &Path, diag: &Diagnostic) {
-    let severity = match diag.severity {
-        Severity::Info => "info",
-        Severity::Warning => "warning",
-        Severity::Error => "error",
-    };
-    let location = match diag.line {
-        Some(n) => format!("{}:{}", path.display(), n),
-        None => format!("{}", path.display()),
-    };
-    eprintln!(
-        "{}: {}: [{}] {}",
-        location, severity, diag.rule, diag.message
-    );
 }

@@ -121,3 +121,63 @@ fn multiple_files_each_get_diagnostics() {
         .code(2)
         .stderr(contains("RFC5545/required-uid"));
 }
+
+#[test]
+fn json_format_emits_array_on_stdout() {
+    let (_tmp, path) = write_fixture("missing-uid.ics", MISSING_UID);
+    let out = Command::cargo_bin("icslint")
+        .unwrap()
+        .args([path.to_str().unwrap(), "-f", "json"])
+        .assert()
+        .code(2)
+        .get_output()
+        .stdout
+        .clone();
+    let s = std::str::from_utf8(&out).expect("utf-8");
+    // Top-level must parse as a JSON array containing the rule id.
+    let parsed: serde_json::Value = serde_json::from_str(s).expect("valid json");
+    let arr = parsed.as_array().expect("array");
+    assert!(arr.iter().any(|row| row["rule"] == "RFC5545/required-uid"));
+}
+
+#[test]
+fn json_format_emits_empty_array_for_clean_input() {
+    let (_tmp, path) = write_fixture("clean.ics", CLEAN_VEVENT);
+    let out = Command::cargo_bin("icslint")
+        .unwrap()
+        .args([path.to_str().unwrap(), "-f", "json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let s = std::str::from_utf8(&out).expect("utf-8");
+    let parsed: serde_json::Value = serde_json::from_str(s).expect("valid json");
+    assert_eq!(parsed.as_array().map(|a| a.len()), Some(0));
+}
+
+#[test]
+fn github_format_emits_workflow_commands_on_stdout() {
+    let (_tmp, path) = write_fixture("missing-uid.ics", MISSING_UID);
+    Command::cargo_bin("icslint")
+        .unwrap()
+        .args([path.to_str().unwrap(), "-f", "github"])
+        .assert()
+        .code(2)
+        .stdout(contains("::error file="))
+        .stdout(contains("title=RFC5545/required-uid"));
+}
+
+#[test]
+fn human_format_diagnostics_do_not_leak_to_stdout() {
+    // Regression guard: machine-format consumers rely on the human
+    // reporter staying on stderr; if a refactor accidentally swaps
+    // streams this test catches it.
+    let (_tmp, path) = write_fixture("missing-uid.ics", MISSING_UID);
+    Command::cargo_bin("icslint")
+        .unwrap()
+        .arg(&path)
+        .assert()
+        .code(2)
+        .stdout(predicates::str::is_empty());
+}
