@@ -57,11 +57,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_calendar_has_no_diagnostics() {
-        let diags = lint("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//x//y\r\nEND:VCALENDAR\r\n");
+    fn well_formed_calendar_with_one_event_has_no_diagnostics() {
+        // A single clean event must not trigger any rule. Empty-VCALENDAR
+        // fixtures used to live here, but `structure/empty-calendar`
+        // (ADR-026) now fires on them by design, so the "clean = no
+        // diagnostics" smoke test needs a real event.
+        let mut src = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//x//y\r\n");
+        src.push_str("BEGIN:VEVENT\r\n");
+        src.push_str("UID:e1\r\nDTSTAMP:20260101T000000Z\r\n");
+        src.push_str("DTSTART;VALUE=DATE:20260429\r\nDTEND;VALUE=DATE:20260430\r\n");
+        src.push_str("SUMMARY:s\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        let diags = lint(&src);
         assert!(
             diags.is_empty(),
-            "empty calendar should be clean; got {:?}",
+            "well-formed calendar should be clean; got {:?}",
             diags
         );
     }

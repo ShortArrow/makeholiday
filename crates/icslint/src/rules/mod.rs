@@ -10,6 +10,7 @@ use crate::diagnostic::{Diagnostic, Severity};
 use crate::walker::RawVEventScan;
 
 pub mod rfc5545;
+pub mod structure;
 pub mod text;
 pub mod vendor;
 
@@ -85,5 +86,9 @@ pub fn all() -> Vec<&'static dyn Rule> {
         &text::DoubleEscape,
         &text::UnescapedCommaInSummary,
         &text::UnescapedSemicolonInSummary,
+        &structure::UnfoldedLongLine,
+        &structure::CrlfViolation,
+        &structure::OrphanEnd,
+        &structure::EmptyCalendar,
     ]
 }
