@@ -5,8 +5,10 @@
 //! guard, and drives the event loop until the active screen asks to quit.
 //!
 //! Phase 4a wires multi-view switching (List / Timeline / Grid) at the
-//! Composition-Root level: `Tab` cycles the active view and `1`/`2`/`3`
-//! jump directly. The active [`Screen`] receives every other intent.
+//! Composition-Root level. Phase 3b layers an `AddForm` modal on top:
+//! pressing `a` in List view replaces the active screen with the form;
+//! Esc/Ctrl+S/Enter on the form return to the *previously-active* view,
+//! reloaded from disk so the just-added event appears in place.
 
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -20,9 +22,9 @@ use icscli::infrastructure::FileCalendarRepository;
 
 use lazyics::error::{LazyicsError, Result};
 use lazyics::infrastructure::terminal::TerminalGuard;
-use lazyics::presentation::keymap::{self, Intent};
+use lazyics::presentation::keymap::{self, Intent, KeymapMode};
 use lazyics::presentation::screens::{
-    GridScreen, ListScreen, Screen, ScreenAction, TimelineScreen, ViewKind,
+    AddForm, AddRequest, GridScreen, ListScreen, Screen, ScreenAction, TimelineScreen, ViewKind,
 };
 
 const DEFAULT_FILE: &str = "calendar.ics";
@@ -52,9 +54,6 @@ fn run() -> Result<()> {
         return Err(LazyicsError::NotATty);
     }
 
-    // Resolve I/O failures (missing file, unreadable file, parse errors)
-    // *before* taking the terminal so the user sees the error on their
-    // shell prompt instead of inside a half-rendered alternate screen.
     let repo = FileCalendarRepository::new(args.file.clone());
     if !repo.exists() {
         return Err(LazyicsError::InvalidArgs(format!(
@@ -77,6 +76,10 @@ fn event_loop(
     screen: &mut Screen,
     file_label: &str,
 ) -> Result<()> {
+    // Where to return after a modal dismisses. Initialized to List
+    // (the first screen we open with); updated each time a modal opens.
+    let mut previous_view = ViewKind::List;
+
     loop {
         guard
             .terminal()
@@ -86,29 +89,40 @@ fn event_loop(
         if !event::poll(POLL_INTERVAL).map_err(LazyicsError::Terminal)? {
             continue;
         }
-        // Non-key events (Resize / Mouse / Paste / FocusGained / FocusLost)
-        // are no-ops; the next draw picks up any resize naturally.
         if let Event::Key(key_event) = event::read().map_err(LazyicsError::Terminal)? {
-            let Some(intent) = keymap::map(key_event) else {
+            // KeymapMode follows the active screen: forms get text-input
+            // semantics, views get nav/modal semantics. The same `a`
+            // press means OpenAdd in a List view and a typed character
+            // in an AddForm.
+            let mode = if screen.is_modal() {
+                KeymapMode::Form
+            } else {
+                KeymapMode::Browse
+            };
+            let Some(intent) = keymap::map(key_event, mode) else {
                 continue;
             };
 
             // View-switching intents are intercepted at the Composition
-            // Root so the active screen never sees them (and screens stay
-            // unaware of the View enum).
-            match intent {
-                Intent::CycleView => {
-                    let next_kind = screen.kind().next();
-                    switch_view(repo, screen, next_kind, file_label)?;
-                    continue;
-                }
-                Intent::SwitchView(kind) => {
-                    if screen.kind() != kind {
-                        switch_view(repo, screen, kind, file_label)?;
+            // Root (Browse mode only). In Form mode the keymap never
+            // emits CycleView/SwitchView in the first place, so the
+            // is_modal guard is belt-and-suspenders.
+            if !screen.is_modal() {
+                match intent {
+                    Intent::CycleView => {
+                        if let Some(current) = screen.kind() {
+                            switch_view(repo, screen, current.next(), file_label)?;
+                        }
+                        continue;
                     }
-                    continue;
+                    Intent::SwitchView(kind) => {
+                        if screen.kind() != Some(kind) {
+                            switch_view(repo, screen, kind, file_label)?;
+                        }
+                        continue;
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
 
             match screen.handle(intent) {
@@ -116,6 +130,20 @@ fn event_loop(
                 ScreenAction::Quit => return Ok(()),
                 ScreenAction::RemoveByIndices(indices) => {
                     apply_remove(repo, screen, file_label, &indices)?;
+                }
+                ScreenAction::OpenAdd => {
+                    // Remember the host view so DismissForm / SubmitAdd
+                    // can return the user to it.
+                    if let Some(kind) = screen.kind() {
+                        previous_view = kind;
+                    }
+                    *screen = Screen::AddForm(AddForm::new(file_label.to_string()));
+                }
+                ScreenAction::SubmitAdd(req) => {
+                    apply_add(repo, screen, file_label, previous_view, req)?;
+                }
+                ScreenAction::DismissForm => {
+                    switch_view(repo, screen, previous_view, file_label)?;
                 }
             }
         }
@@ -161,16 +189,13 @@ fn apply_remove(
         .map(|i| i.to_string())
         .collect::<Vec<_>>()
         .join(",");
-    // `quiet = true` keeps the use case's "Removed: …" status off our stderr
-    // (it would race the alternate screen); `allow_prompts = false` makes
-    // sure no interactive fallback fires from inside the TUI.
     let ctx = RunContext {
         quiet: true,
         allow_prompts: false,
     };
     match remove(repo, ctx, None, Some(&spec)) {
         Ok(()) => {
-            let kind = screen.kind();
+            let kind = screen.kind().unwrap_or(ViewKind::List);
             switch_view(repo, screen, kind, file_label)?;
             screen.set_transient_status(format!("Removed {count} event(s)."));
             tracing::info!(count, indices = ?indices, "remove succeeded");
@@ -178,6 +203,50 @@ fn apply_remove(
         Err(e) => {
             tracing::error!(error = %e, "remove failed");
             screen.set_transient_status(format!("Remove failed: {e}"));
+        }
+    }
+    Ok(())
+}
+
+/// Submit a validated Add request to `icscli::application::use_cases::add`.
+/// On success: switch back to `previous_view`, reloaded from disk, with a
+/// transient status banner. On failure: stay on the form and surface the
+/// error in its status bar so the user can edit and retry.
+fn apply_add(
+    repo: &FileCalendarRepository,
+    screen: &mut Screen,
+    file_label: &str,
+    previous_view: ViewKind,
+    req: AddRequest,
+) -> Result<()> {
+    use lazyics::application::use_cases::{RunContext, add};
+
+    let ctx = RunContext {
+        quiet: true,
+        allow_prompts: false,
+    };
+    let summary_for_msg = req.summary.clone();
+    let start_for_msg = req.start;
+    match add(
+        repo,
+        ctx,
+        Some(&req.summary),
+        Some(req.start),
+        req.end,
+        req.busystatus,
+        req.class,
+        req.categories,
+        req.icon,
+    ) {
+        Ok(()) => {
+            switch_view(repo, screen, previous_view, file_label)?;
+            screen.set_transient_status(format!("Added: {summary_for_msg} on {start_for_msg}"));
+            tracing::info!(summary = %summary_for_msg, start = %start_for_msg, "add succeeded");
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "add failed");
+            // Form is still the active screen; reuse its status bar.
+            screen.set_transient_status(format!("Add failed: {e}"));
         }
     }
     Ok(())
@@ -270,7 +339,7 @@ Views:
 
 Common keys:
   q | Ctrl+C          Quit
-  Esc                 Cancel modal state (List Remove mode) / Quit at top level
+  Esc                 Cancel modal state / Quit at top level
   j | Down            Down / next row / next week (Grid)
   k | Up              Up / previous row / previous week (Grid)
   h | Left            Previous day (Grid)
@@ -278,10 +347,18 @@ Common keys:
   g | Home            First event / first of period
   G | End             Last event / last of period
 
-List view (Remove mode):
+List view:
+  a                   Open Add form
   d | x               Enter multi-select Remove mode
-  Space               Toggle mark on highlighted row
+  Space               Toggle mark on highlighted row (Remove mode)
   Enter | Shift+D     Confirm removal of marked events
+
+Add form:
+  Tab | Shift+Tab     Next / previous field
+  Left | Right        Cursor in text fields; cycle prev/next for pickers
+  Space               Cycle next on busy-status / class pickers
+  Ctrl+S | Enter      Submit (validates required fields)
+  Esc                 Cancel and return to the previous view
 "
 }
 

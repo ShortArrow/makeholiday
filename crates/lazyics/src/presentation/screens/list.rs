@@ -184,13 +184,29 @@ impl ListScreen {
                 }
                 _ => ScreenAction::Continue,
             },
+            // 'a' opens the Add form. List is the only view that hosts
+            // forms per ADR-025 §"Multi-view amendment".
+            Intent::OpenAdd => {
+                if matches!(self.mode, Mode::Browse) {
+                    ScreenAction::OpenAdd
+                } else {
+                    // In Remove mode, swallow 'a' to avoid the user
+                    // losing their marks via a misfire.
+                    ScreenAction::Continue
+                }
+            }
             // List view has a single column and no granularity — these
-            // intents are meaningful in Grid / Timeline only.
+            // intents are meaningful in Grid / Timeline / forms only.
             Intent::NavLeft
             | Intent::NavRight
             | Intent::CycleGranularity
             | Intent::CycleView
-            | Intent::SwitchView(_) => ScreenAction::Continue,
+            | Intent::SwitchView(_)
+            | Intent::TypeChar(_)
+            | Intent::Backspace
+            | Intent::NextField
+            | Intent::PrevField
+            | Intent::SubmitForm => ScreenAction::Continue,
         }
     }
 

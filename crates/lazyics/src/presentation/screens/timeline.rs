@@ -143,14 +143,22 @@ impl TimelineScreen {
             }
             // Phase 4a: Remove / Add / Edit live in the List view; here
             // they are no-ops so users get predictable cross-view keymap
-            // muscle memory.
+            // muscle memory. Form-mode intents are likewise unreachable
+            // here (Timeline is never the active screen in Form keymap
+            // mode) but listing them keeps the match exhaustive.
             Intent::OpenRemove
+            | Intent::OpenAdd
             | Intent::ToggleMark
             | Intent::Confirm
             | Intent::NavLeft
             | Intent::NavRight
             | Intent::CycleView
-            | Intent::SwitchView(_) => ScreenAction::Continue,
+            | Intent::SwitchView(_)
+            | Intent::TypeChar(_)
+            | Intent::Backspace
+            | Intent::NextField
+            | Intent::PrevField
+            | Intent::SubmitForm => ScreenAction::Continue,
         }
     }
 

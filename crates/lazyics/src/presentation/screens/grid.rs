@@ -151,12 +151,21 @@ impl GridScreen {
                 self.granularity = self.granularity.cycle();
                 ScreenAction::Continue
             }
-            // Phase 4a: Remove / mark / confirm belong to List view only.
+            // Phase 4a: Remove / Add / mark / confirm belong to List view
+            // only. Form-mode intents are unreachable here (Grid is never
+            // the active screen in Form keymap mode) but listing them
+            // keeps the match exhaustive.
             Intent::OpenRemove
+            | Intent::OpenAdd
             | Intent::ToggleMark
             | Intent::Confirm
             | Intent::CycleView
-            | Intent::SwitchView(_) => ScreenAction::Continue,
+            | Intent::SwitchView(_)
+            | Intent::TypeChar(_)
+            | Intent::Backspace
+            | Intent::NextField
+            | Intent::PrevField
+            | Intent::SubmitForm => ScreenAction::Continue,
         }
     }
 

@@ -1,1 +1,3 @@
-// Reusable view primitives land here as the screens grow. Empty in Phase 1.
+pub mod text_input;
+
+pub use text_input::TextInput;
