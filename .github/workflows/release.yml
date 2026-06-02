@@ -102,12 +102,7 @@ jobs:
           Copy-Item README.md, LICENSE-MIT, LICENSE-APACHE "dist/$name/"
           Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"
           "ARTIFACT_PATH=dist/$name.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      # SLSA build provenance via actions/attest-build-provenance only
-      # works on public repositories. Skip the step while makeholiday is
-      # private; the step will re-enable itself the moment the repository
-      # is made public — no workflow change needed at that point.
       - name: Attest provenance
-        if: github.event.repository.visibility == 'public'
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: ${{ env.ARTIFACT_PATH }}
