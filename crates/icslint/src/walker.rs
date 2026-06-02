@@ -23,6 +23,10 @@ pub struct RawProperty {
     /// Property name, UPPERCASE-normalized (matches
     /// `LogicalLine::name`).
     pub name: String,
+    /// Raw value — the bytes after the `:` separator, escape sequences
+    /// left intact. Text/* rules need the un-decoded form to inspect
+    /// the escape state of `\,`, `\;`, and `\\`.
+    pub value: String,
 }
 
 /// Property sequence of one `VEVENT` block, in source order.
@@ -93,6 +97,7 @@ fn scan_vevent_body(logical: &[String], start: usize) -> (Vec<RawProperty>, usiz
             props.push(RawProperty {
                 line: (i + 1) as u32,
                 name: ll.name,
+                value: ll.value.to_string(),
             });
         }
         i += 1;
