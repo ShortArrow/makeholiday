@@ -22,8 +22,14 @@ pub enum KeymapMode {
 /// High-level user intent produced by a single key press.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Intent {
-    /// Quit the application — force-exit regardless of modal state.
+    /// "Soft" quit — produced by `q` in Browse mode. The active screen
+    /// interprets this contextually: in a top-level view it exits the
+    /// app; in an overlay like the help screen it closes the overlay
+    /// instead. (Modeled after `less` / `man` / `vim` `q`.)
     Quit,
+    /// "Hard" quit — produced by `Ctrl+C` from anywhere. Always exits
+    /// the app immediately, regardless of overlays or modal state.
+    ForceQuit,
     /// Back out of the current modal state. The active screen interprets
     /// this contextually: in a top-level browse view it falls through to
     /// [`Intent::Quit`]; in multi-select Remove mode it discards the marks
@@ -99,7 +105,7 @@ pub fn map(event: KeyEvent, mode: KeymapMode) -> Option<Intent> {
 fn map_browse(event: KeyEvent) -> Option<Intent> {
     match (event.code, event.modifiers) {
         (KeyCode::Char('q'), KeyModifiers::NONE) => Some(Intent::Quit),
-        (KeyCode::Char('c'), KeyModifiers::CONTROL) => Some(Intent::Quit),
+        (KeyCode::Char('c'), KeyModifiers::CONTROL) => Some(Intent::ForceQuit),
         (KeyCode::Esc, _) => Some(Intent::Cancel),
 
         (KeyCode::Char('j'), KeyModifiers::NONE) => Some(Intent::NavDown),
@@ -156,8 +162,9 @@ fn map_browse(event: KeyEvent) -> Option<Intent> {
 
 fn map_form(event: KeyEvent) -> Option<Intent> {
     match (event.code, event.modifiers) {
-        // Hard-exit shortcuts work everywhere.
-        (KeyCode::Char('c'), KeyModifiers::CONTROL) => Some(Intent::Quit),
+        // Hard-exit shortcut works everywhere; `q` in Form mode is just
+        // a typed character so the soft Quit intent never fires here.
+        (KeyCode::Char('c'), KeyModifiers::CONTROL) => Some(Intent::ForceQuit),
         (KeyCode::Esc, _) => Some(Intent::Cancel),
 
         // Submission shortcuts.
@@ -242,13 +249,24 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_c_quits_in_both_modes() {
+    fn ctrl_c_force_quits_in_both_modes() {
         for mode in [KeymapMode::Browse, KeymapMode::Form] {
             assert_eq!(
                 map(press(KeyCode::Char('c'), KeyModifiers::CONTROL), mode),
-                Some(Intent::Quit)
+                Some(Intent::ForceQuit)
             );
         }
+    }
+
+    #[test]
+    fn q_in_browse_emits_soft_quit_not_force_quit() {
+        assert_eq!(
+            map(
+                press(KeyCode::Char('q'), KeyModifiers::NONE),
+                KeymapMode::Browse
+            ),
+            Some(Intent::Quit)
+        );
     }
 
     #[test]

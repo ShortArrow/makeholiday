@@ -192,7 +192,7 @@ impl EventForm {
     pub fn handle(&mut self, intent: Intent) -> ScreenAction {
         self.transient_status = None;
         match intent {
-            Intent::Quit => ScreenAction::Quit,
+            Intent::Quit | Intent::ForceQuit => ScreenAction::Quit,
             Intent::Cancel => ScreenAction::DismissForm,
             Intent::NextField => {
                 self.focus = (self.focus + 1) % FIELD_COUNT;

@@ -403,9 +403,10 @@ Views:
   u                   Cycle current view's time unit (month ↔ week)
 
 Common keys:
-  q | Ctrl+C          Quit
+  q                   Close current overlay (close help) or quit at top level
+  Ctrl+C              Quit the app from anywhere (force quit)
   ?                   Open / close in-app help overlay
-  Esc                 Cancel modal state / close help / Quit at top level
+  Esc                 Cancel modal state / close help / quit at top level
   j | Down            Down / next row / next week (Grid)
   k | Up              Up / previous row / previous week (Grid)
   h | Left            Previous day (Grid)

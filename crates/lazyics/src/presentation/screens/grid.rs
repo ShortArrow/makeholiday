@@ -116,7 +116,7 @@ impl GridScreen {
     pub fn handle(&mut self, intent: Intent) -> ScreenAction {
         self.transient_status = None;
         match intent {
-            Intent::Quit | Intent::Cancel => ScreenAction::Quit,
+            Intent::Quit | Intent::ForceQuit | Intent::Cancel => ScreenAction::Quit,
             Intent::NavLeft => {
                 self.cursor = self.cursor - Days::new(1);
                 ScreenAction::Continue

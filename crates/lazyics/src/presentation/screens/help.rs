@@ -1,10 +1,12 @@
 //! In-app help overlay.
 //!
 //! Renders all keybindings grouped by context. Opened from any view by
-//! `?` (Browse mode), closed by `?` again, `Esc`, or `q`. The overlay
-//! uses Browse keymap (no text input) but is treated as a non-view by
-//! the Composition Root (`Screen::kind()` returns `None`), which is how
-//! view-switching shortcuts get inert while help is on screen.
+//! `?` (Browse mode), closed by `?` again, `Esc`, or `q` (soft Quit —
+//! same affordance as `less` / `man`). `Ctrl+C` still force-quits the
+//! whole app from inside the overlay. The overlay uses Browse keymap
+//! (no text input) but is treated as a non-view by the Composition Root
+//! (`Screen::kind()` returns `None`), which is how view-switching
+//! shortcuts get inert while help is on screen.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
@@ -39,11 +41,14 @@ impl HelpScreen {
     pub fn handle(&mut self, intent: Intent) -> ScreenAction {
         self.transient_status = None;
         match intent {
-            // Hard exit: same as anywhere else.
-            Intent::Quit => ScreenAction::Quit,
-            // The three "close help" affordances. `OpenHelp` toggling
-            // closes the overlay when it's already open.
-            Intent::Cancel | Intent::OpenHelp => ScreenAction::DismissHelp,
+            // `Ctrl+C` is the only hard-exit affordance from the help
+            // overlay — the user explicitly opted for "kill everything".
+            Intent::ForceQuit => ScreenAction::Quit,
+            // The three "close help" affordances. `Quit` (`q`) closes
+            // the overlay rather than the app — matching `less` / `man`
+            // / `vim` `q` semantics. `OpenHelp` toggling closes when the
+            // overlay is already up.
+            Intent::Quit | Intent::Cancel | Intent::OpenHelp => ScreenAction::DismissHelp,
             // Everything else: ignore. Listing the variants keeps the
             // match exhaustive and tells future readers each intent was
             // considered.
@@ -85,7 +90,7 @@ impl HelpScreen {
         let status_text = self
             .transient_status
             .clone()
-            .unwrap_or_else(|| "? close help  q quit".to_string());
+            .unwrap_or_else(|| "q / ? / Esc close help  |  Ctrl+C quit app".to_string());
         frame.render_widget(Paragraph::new(status_text), status);
     }
 }
@@ -114,9 +119,13 @@ fn blank() -> Line<'static> {
 fn help_lines() -> Vec<Line<'static>> {
     vec![
         header("Global"),
-        binding("q | Ctrl+C", "Quit"),
+        binding(
+            "q",
+            "Close current overlay (close help) or quit at top level",
+        ),
+        binding("Ctrl+C", "Quit the app from anywhere"),
         binding("?", "Open / close this help"),
-        binding("Esc", "Cancel modal state / close help / Quit at top level"),
+        binding("Esc", "Cancel modal state / close help / quit at top level"),
         blank(),
         header("View switching"),
         binding("Tab", "Cycle List → Timeline → Grid → List"),
@@ -167,9 +176,18 @@ mod tests {
     }
 
     #[test]
-    fn quit_force_exits() {
+    fn soft_quit_dismisses_help_not_app() {
         let mut s = HelpScreen::new("h.ics");
-        assert_eq!(s.handle(Intent::Quit), ScreenAction::Quit);
+        // `q` (Intent::Quit) closes the overlay rather than the app,
+        // matching less / man / vim help conventions.
+        assert_eq!(s.handle(Intent::Quit), ScreenAction::DismissHelp);
+    }
+
+    #[test]
+    fn force_quit_still_exits_the_app() {
+        let mut s = HelpScreen::new("h.ics");
+        // Ctrl+C is the explicit hard-exit affordance.
+        assert_eq!(s.handle(Intent::ForceQuit), ScreenAction::Quit);
     }
 
     #[test]

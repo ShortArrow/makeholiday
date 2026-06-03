@@ -127,7 +127,7 @@ impl ListScreen {
         self.transient_status = None;
 
         match intent {
-            Intent::Quit => ScreenAction::Quit,
+            Intent::Quit | Intent::ForceQuit => ScreenAction::Quit,
             Intent::Cancel => match self.mode {
                 // Esc at the top level quits, matching the original
                 // Phase 1 behavior (q/Ctrl+C still work too).

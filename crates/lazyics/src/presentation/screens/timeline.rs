@@ -118,7 +118,7 @@ impl TimelineScreen {
     pub fn handle(&mut self, intent: Intent) -> ScreenAction {
         self.transient_status = None;
         match intent {
-            Intent::Quit | Intent::Cancel => ScreenAction::Quit,
+            Intent::Quit | Intent::ForceQuit | Intent::Cancel => ScreenAction::Quit,
             Intent::NavDown => {
                 self.move_event_cursor(1);
                 ScreenAction::Continue
