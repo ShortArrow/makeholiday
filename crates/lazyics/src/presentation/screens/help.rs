@@ -56,6 +56,7 @@ impl HelpScreen {
             | Intent::OpenSearch
             | Intent::OpenMonthPicker
             | Intent::OpenYearPicker
+            | Intent::ToggleVisualRange
             | Intent::ToggleMark
             | Intent::Confirm
             | Intent::TypeChar(_)
@@ -159,6 +160,12 @@ fn help_lines() -> Vec<Line<'static>> {
         binding("/ (List only)", "Open search-as-you-type filter"),
         binding("m (Grid only)", "Open month-jump picker"),
         binding("Y (Grid only)", "Open year-jump picker"),
+        binding("v (Grid only)", "Toggle visual range (anchor + cursor)"),
+        blank(),
+        header("Visual range (Grid)"),
+        binding("h | j | k | l", "Extend the range; anchor stays put"),
+        binding("a", "Open Add form with Start = min and End = max of range"),
+        binding("v | Esc", "Exit range mode (anchor discarded)"),
         blank(),
         header("Jump pickers (Grid)"),
         binding("h | j | k | l", "Move picker selection"),

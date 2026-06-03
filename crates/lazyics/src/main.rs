@@ -125,13 +125,17 @@ fn event_loop(
                 ScreenAction::RemoveByIndices(indices) => {
                     apply_remove(repo, screen, file_label, &indices)?;
                 }
-                ScreenAction::OpenAdd { start_hint } => {
+                ScreenAction::OpenAdd {
+                    start_hint,
+                    end_hint,
+                } => {
                     if let Some(kind) = screen.kind() {
                         previous_view = kind;
                     }
-                    *screen = Screen::EventForm(EventForm::new_for_add_with_start(
+                    *screen = Screen::EventForm(EventForm::new_for_add_with_range(
                         file_label.to_string(),
                         start_hint,
+                        end_hint,
                     ));
                 }
                 ScreenAction::OpenEditByUid { uid } => {
@@ -447,6 +451,8 @@ CRUD (where each affordance applies):
   / (List only)       Open search-as-you-type filter
   m (Grid only)       Open month-jump picker
   Y (Grid only)       Open year-jump picker
+  v (Grid only)       Toggle visual range (cursor + anchor); `a` then
+                      opens Add form with Start/End spanning the range
 
 Grid jump pickers:
   h | j | k | l       Move picker selection

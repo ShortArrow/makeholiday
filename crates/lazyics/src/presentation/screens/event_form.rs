@@ -108,23 +108,34 @@ impl EventForm {
         file_label: impl Into<String>,
         start_hint: Option<chrono::NaiveDate>,
     ) -> Self {
+        Self::new_for_add_with_range(file_label, start_hint, None)
+    }
+
+    /// Add-mode form with optional pre-filled Start and End. Grid uses
+    /// this when the user submits a visual-range selection with `a`.
+    pub fn new_for_add_with_range(
+        file_label: impl Into<String>,
+        start_hint: Option<chrono::NaiveDate>,
+        end_hint: Option<chrono::NaiveDate>,
+    ) -> Self {
         let start = match start_hint {
             Some(d) => TextInput::with_value(d.format("%Y-%m-%d").to_string()),
             None => TextInput::new(),
         };
-        // When the user comes in with a pre-filled Start, jump focus
-        // straight to Summary (the field they still need to fill).
-        let focus = SUMMARY;
+        let end = match end_hint {
+            Some(d) => TextInput::with_value(d.format("%Y-%m-%d").to_string()),
+            None => TextInput::new(),
+        };
         Self {
             mode: FormMode::Add,
             summary: TextInput::new(),
             start,
-            end: TextInput::new(),
+            end,
             busystatus: MsBusyStatus::Free,
             class: None,
             categories: TextInput::new(),
             icon: TextInput::new(),
-            focus,
+            focus: SUMMARY,
             error: None,
             file_label: file_label.into(),
             transient_status: None,
@@ -264,6 +275,7 @@ impl EventForm {
             | Intent::OpenHelp
             | Intent::OpenMonthPicker
             | Intent::OpenYearPicker
+            | Intent::ToggleVisualRange
             | Intent::ToggleMark
             | Intent::Confirm => ScreenAction::Continue,
         }

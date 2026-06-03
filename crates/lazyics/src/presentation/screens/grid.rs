@@ -54,8 +54,10 @@ impl Granularity {
     }
 }
 
-/// Sub-mode for [`GridScreen`]. `MonthPicker` / `YearPicker` overlay the
-/// grid and own their own selection state while open.
+/// Sub-mode for [`GridScreen`]. `MonthPicker` / `YearPicker` overlay
+/// the grid and own their own selection state while open.
+/// `VisualRange` keeps Browse-style nav but remembers an anchor so the
+/// user can submit `a` to create a multi-day event from cursor↔anchor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Browse,
@@ -68,6 +70,9 @@ enum Mode {
         index: usize,
         /// Leftmost year shown; window is `range_start ..= range_start + 11`.
         range_start: i32,
+    },
+    VisualRange {
+        anchor: NaiveDate,
     },
 }
 
@@ -136,12 +141,32 @@ impl GridScreen {
         self.transient_status = Some(msg.into());
     }
 
-    /// Whether a month- or year-jump picker is currently overlaid on the
-    /// grid. Composition Root forwards this through `Screen::kind()` so
-    /// view-switching shortcuts (Tab / 1 / 2 / 3) stay inert while the
-    /// picker is up.
+    /// Whether a month- or year-jump picker is currently overlaid on
+    /// the grid. Composition Root forwards this through `Screen::kind()`
+    /// so view-switching shortcuts (Tab / 1 / 2 / 3) stay inert while
+    /// the picker is up. Visual-range mode is *not* covered here — it
+    /// keeps Browse-style nav and Tab is still allowed.
     pub fn is_picker_mode(&self) -> bool {
-        !matches!(self.mode, Mode::Browse)
+        matches!(
+            self.mode,
+            Mode::MonthPicker { .. } | Mode::YearPicker { .. }
+        )
+    }
+
+    /// Whether Grid is currently in visual-range selection mode.
+    pub fn is_visual_range(&self) -> bool {
+        matches!(self.mode, Mode::VisualRange { .. })
+    }
+
+    /// Current range when in visual-range mode: `(min, max)` inclusive.
+    /// `None` otherwise.
+    fn visual_range_bounds(&self) -> Option<(NaiveDate, NaiveDate)> {
+        match self.mode {
+            Mode::VisualRange { anchor } => {
+                Some((self.cursor.min(anchor), self.cursor.max(anchor)))
+            }
+            _ => None,
+        }
     }
 
     pub fn handle(&mut self, intent: Intent) -> ScreenAction {
@@ -149,13 +174,32 @@ impl GridScreen {
         if self.is_picker_mode() {
             return self.handle_picker(intent);
         }
+        // Browse and VisualRange share most of the keymap (Browse-style
+        // nav, view shortcuts, OpenAdd/Edit/etc). VisualRange diverges
+        // in a few places: Cancel exits the mode, ToggleVisualRange
+        // exits, and OpenAdd carries the range bounds.
         self.handle_browse(intent)
     }
 
     fn handle_browse(&mut self, intent: Intent) -> ScreenAction {
         match intent {
             Intent::Quit | Intent::ForceQuit => ScreenAction::Quit,
-            Intent::Cancel => ScreenAction::Continue,
+            Intent::Cancel => {
+                if self.is_visual_range() {
+                    self.mode = Mode::Browse;
+                }
+                ScreenAction::Continue
+            }
+            Intent::ToggleVisualRange => {
+                self.mode = if self.is_visual_range() {
+                    Mode::Browse
+                } else {
+                    Mode::VisualRange {
+                        anchor: self.cursor,
+                    }
+                };
+                ScreenAction::Continue
+            }
             Intent::NavLeft => {
                 self.cursor = self.cursor - Days::new(1);
                 ScreenAction::Continue
@@ -193,9 +237,24 @@ impl GridScreen {
                 ScreenAction::Continue
             }
             Intent::OpenHelp => ScreenAction::OpenHelp,
-            Intent::OpenAdd => ScreenAction::OpenAdd {
-                start_hint: Some(self.cursor),
-            },
+            Intent::OpenAdd => {
+                let action = match self.visual_range_bounds() {
+                    Some((s, e)) => ScreenAction::OpenAdd {
+                        start_hint: Some(s),
+                        end_hint: Some(e),
+                    },
+                    None => ScreenAction::OpenAdd {
+                        start_hint: Some(self.cursor),
+                        end_hint: None,
+                    },
+                };
+                // Exiting visual range — the host view we'll return to
+                // after the form should be plain Grid Browse.
+                if self.is_visual_range() {
+                    self.mode = Mode::Browse;
+                }
+                action
+            }
             Intent::OpenEdit => match self.events_by_date.get(&self.cursor) {
                 // 1-based index into the calendar's original event list.
                 Some(idxs) if !idxs.is_empty() => ScreenAction::OpenEdit {
@@ -271,7 +330,7 @@ impl GridScreen {
                 match &mut self.mode {
                     Mode::MonthPicker { month } => *month = 1,
                     Mode::YearPicker { index, .. } => *index = 0,
-                    Mode::Browse => unreachable!(),
+                    Mode::Browse | Mode::VisualRange { .. } => unreachable!(),
                 }
                 ScreenAction::Continue
             }
@@ -279,7 +338,7 @@ impl GridScreen {
                 match &mut self.mode {
                     Mode::MonthPicker { month } => *month = 12,
                     Mode::YearPicker { index, .. } => *index = 11,
-                    Mode::Browse => unreachable!(),
+                    Mode::Browse | Mode::VisualRange { .. } => unreachable!(),
                 }
                 ScreenAction::Continue
             }
@@ -319,7 +378,7 @@ impl GridScreen {
                 }
                 *index = new_idx as usize;
             }
-            Mode::Browse => unreachable!(),
+            Mode::Browse | Mode::VisualRange { .. } => unreachable!(),
         }
     }
 
@@ -345,7 +404,7 @@ impl GridScreen {
                     self.cursor = d;
                 }
             }
-            Mode::Browse => {}
+            Mode::Browse | Mode::VisualRange { .. } => {}
         }
         self.mode = Mode::Browse;
     }
@@ -398,10 +457,18 @@ impl GridScreen {
             .clone()
             .unwrap_or_else(|| match &self.mode {
                 Mode::Browse => format!(
-                    "{}  |  {} unit  |  m month-jump  Y year-jump  Tab view  u unit  q quit",
+                    "{}  |  {} unit  |  v range  m month  Y year  a add  e edit  q quit",
                     self.file_label,
                     self.granularity.label(),
                 ),
+                Mode::VisualRange { .. } => {
+                    let (s, e) = self.visual_range_bounds().unwrap();
+                    format!(
+                        "RANGE  |  {} → {}  |  hjkl extend  a add as multi-day  v/Esc cancel",
+                        s.format("%Y-%m-%d"),
+                        e.format("%Y-%m-%d")
+                    )
+                }
                 Mode::MonthPicker { .. } | Mode::YearPicker { .. } => {
                     "Picker  |  hjkl move  Enter jump  q/Esc cancel".to_string()
                 }
@@ -410,7 +477,7 @@ impl GridScreen {
 
         // Picker overlay on top of the grid + detail panel.
         match &self.mode {
-            Mode::Browse => {}
+            Mode::Browse | Mode::VisualRange { .. } => {}
             Mode::MonthPicker { month } => render_month_picker(frame, *month),
             Mode::YearPicker { index, range_start } => {
                 render_year_picker(frame, *index, *range_start)
@@ -440,6 +507,7 @@ impl GridScreen {
             Granularity::Year => unreachable!(),
         };
         let anchor_month = self.cursor.month();
+        let range_bounds = self.visual_range_bounds();
 
         for week in 0..weeks {
             let mut spans: Vec<Span<'static>> = Vec::new();
@@ -449,6 +517,12 @@ impl GridScreen {
                 let mut style = Style::default();
                 if self.granularity == Granularity::Month && date.month() != anchor_month {
                     style = style.add_modifier(Modifier::DIM);
+                }
+                if let Some((s, e)) = range_bounds
+                    && date >= s
+                    && date <= e
+                {
+                    style = style.add_modifier(Modifier::UNDERLINED).fg(Color::Cyan);
                 }
                 if date == self.cursor {
                     style = style.add_modifier(Modifier::REVERSED).fg(Color::Yellow);
@@ -879,8 +953,89 @@ mod tests {
             s.handle(Intent::OpenAdd),
             ScreenAction::OpenAdd {
                 start_hint: Some(day(2026, 5, 15)),
+                end_hint: None,
             }
         );
+    }
+
+    // --- Visual range ---------------------------------------------------
+
+    #[test]
+    fn toggle_visual_range_anchors_at_cursor() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::ToggleVisualRange);
+        assert!(s.is_visual_range());
+        assert_eq!(
+            s.visual_range_bounds(),
+            Some((day(2026, 5, 15), day(2026, 5, 15)))
+        );
+    }
+
+    #[test]
+    fn extending_range_with_nav_updates_bounds() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::ToggleVisualRange);
+        // Move cursor forward 4 days.
+        for _ in 0..4 {
+            s.handle(Intent::NavRight);
+        }
+        assert_eq!(s.cursor(), day(2026, 5, 19));
+        assert_eq!(
+            s.visual_range_bounds(),
+            Some((day(2026, 5, 15), day(2026, 5, 19)))
+        );
+    }
+
+    #[test]
+    fn range_supports_reverse_extension() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::ToggleVisualRange);
+        for _ in 0..3 {
+            s.handle(Intent::NavLeft);
+        }
+        assert_eq!(s.cursor(), day(2026, 5, 12));
+        // Anchor was 15, cursor is 12 — bounds report (12, 15).
+        assert_eq!(
+            s.visual_range_bounds(),
+            Some((day(2026, 5, 12), day(2026, 5, 15)))
+        );
+    }
+
+    #[test]
+    fn open_add_in_visual_range_carries_both_hints() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::ToggleVisualRange);
+        for _ in 0..4 {
+            s.handle(Intent::NavRight);
+        }
+        let action = s.handle(Intent::OpenAdd);
+        assert_eq!(
+            action,
+            ScreenAction::OpenAdd {
+                start_hint: Some(day(2026, 5, 15)),
+                end_hint: Some(day(2026, 5, 19)),
+            }
+        );
+        // Visual mode exits after submitting the Add.
+        assert!(!s.is_visual_range());
+    }
+
+    #[test]
+    fn esc_in_visual_range_exits_without_add() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::ToggleVisualRange);
+        s.handle(Intent::NavRight);
+        assert_eq!(s.handle(Intent::Cancel), ScreenAction::Continue);
+        assert!(!s.is_visual_range());
+    }
+
+    #[test]
+    fn toggle_visual_range_off_exits_mode() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::ToggleVisualRange);
+        assert!(s.is_visual_range());
+        s.handle(Intent::ToggleVisualRange);
+        assert!(!s.is_visual_range());
     }
 
     #[test]

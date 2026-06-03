@@ -45,6 +45,10 @@ pub enum Intent {
     OpenMonthPicker,
     /// Open the year-jump picker (Grid view, Browse).
     OpenYearPicker,
+    /// Enter / toggle Grid's visual-range mode (anchor + cursor
+    /// describe a date range). Pressing the same key again or `Esc`
+    /// exits without producing an Add.
+    ToggleVisualRange,
     /// Toggle the help overlay. Same key opens and closes.
     OpenHelp,
     ToggleMark,
@@ -96,6 +100,7 @@ fn map_browse(event: KeyEvent) -> Option<Intent> {
         (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Intent::OpenSearch),
         (KeyCode::Char('m'), KeyModifiers::NONE) => Some(Intent::OpenMonthPicker),
         (KeyCode::Char('Y'), KeyModifiers::SHIFT) => Some(Intent::OpenYearPicker),
+        (KeyCode::Char('v'), KeyModifiers::NONE) => Some(Intent::ToggleVisualRange),
         // `?` arrives as Char('?') with Shift on most layouts; accept any modifiers.
         (KeyCode::Char('?'), _) => Some(Intent::OpenHelp),
         (KeyCode::Char('d'), KeyModifiers::NONE) => Some(Intent::OpenRemove),

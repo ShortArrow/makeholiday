@@ -147,7 +147,10 @@ impl TimelineScreen {
                 ScreenAction::Continue
             }
             Intent::OpenHelp => ScreenAction::OpenHelp,
-            Intent::OpenAdd => ScreenAction::OpenAdd { start_hint: None },
+            Intent::OpenAdd => ScreenAction::OpenAdd {
+                start_hint: None,
+                end_hint: None,
+            },
             Intent::OpenEdit => match self.selected_event_uid() {
                 Some(uid) => ScreenAction::OpenEditByUid {
                     uid: uid.to_string(),
@@ -168,7 +171,8 @@ impl TimelineScreen {
             | Intent::PrevField
             | Intent::SubmitForm
             | Intent::OpenMonthPicker
-            | Intent::OpenYearPicker => ScreenAction::Continue,
+            | Intent::OpenYearPicker
+            | Intent::ToggleVisualRange => ScreenAction::Continue,
         }
     }
 
@@ -461,7 +465,10 @@ mod tests {
         let mut s = TimelineScreen::from_events(&three_events_in_three_months(), "h.ics");
         assert_eq!(
             s.handle(Intent::OpenAdd),
-            ScreenAction::OpenAdd { start_hint: None }
+            ScreenAction::OpenAdd {
+                start_hint: None,
+                end_hint: None,
+            }
         );
     }
 

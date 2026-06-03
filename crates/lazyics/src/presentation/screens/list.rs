@@ -319,7 +319,10 @@ impl ListScreen {
             Intent::OpenAdd => match self.mode {
                 // Browse mode opens the form; Remove mode swallows `a`
                 // so the user doesn't lose marks via a misfire.
-                Mode::Browse => ScreenAction::OpenAdd { start_hint: None },
+                Mode::Browse => ScreenAction::OpenAdd {
+                    start_hint: None,
+                    end_hint: None,
+                },
                 Mode::Remove { .. } => ScreenAction::Continue,
                 Mode::Search { .. } => unreachable!(),
             },
@@ -357,7 +360,8 @@ impl ListScreen {
             | Intent::PrevField
             | Intent::SubmitForm
             | Intent::OpenMonthPicker
-            | Intent::OpenYearPicker => ScreenAction::Continue,
+            | Intent::OpenYearPicker
+            | Intent::ToggleVisualRange => ScreenAction::Continue,
         }
     }
 

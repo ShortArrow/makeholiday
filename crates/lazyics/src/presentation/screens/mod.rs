@@ -69,6 +69,7 @@ pub enum ScreenAction {
     /// event on that day. List and Timeline pass `None`.
     OpenAdd {
         start_hint: Option<chrono::NaiveDate>,
+        end_hint: Option<chrono::NaiveDate>,
     },
     /// Open the Edit form on the event at the given 1-based index. The
     /// Composition Root pulls the event from the loaded list and seeds
