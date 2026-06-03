@@ -1,14 +1,11 @@
 //! lazyics — `lazygit`-inspired TUI for iCalendar files.
 //!
-//! Composition Root. Parses minimal CLI args, refuses to run without a TTY
-//! (ADR-025 §"Output and exit codes"), opens the terminal under a RAII
-//! guard, and drives the event loop until the active screen asks to quit.
+//! Composition Root: parses args, refuses to run without a TTY (ADR-025
+//! §"Output and exit codes"), opens the terminal under a RAII guard,
+//! drives the event loop until the active screen asks to quit.
 //!
-//! Phase 4a wires multi-view switching (List / Timeline / Grid) at the
-//! Composition-Root level. Phase 3b layers an `AddForm` modal on top:
-//! pressing `a` in List view replaces the active screen with the form;
-//! Esc/Ctrl+S/Enter on the form return to the *previously-active* view,
-//! reloaded from disk so the just-added event appears in place.
+//! The keybinding contract lives in
+//! `presentation::screens::help::help_lines` — that text is the spec.
 
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -91,10 +88,6 @@ fn event_loop(
             continue;
         }
         if let Event::Key(key_event) = event::read().map_err(LazyicsError::Terminal)? {
-            // KeymapMode follows the active screen: forms get text-input
-            // semantics, views get nav/modal semantics. The same `a`
-            // press means OpenAdd in a List view and a typed character
-            // in an AddForm.
             let mode = if screen.is_modal() {
                 KeymapMode::Form
             } else {
@@ -104,10 +97,10 @@ fn event_loop(
                 continue;
             };
 
-            // View-switching intents are intercepted at the Composition
-            // Root, but only when the active screen *is* a view. While a
-            // modal (form) or overlay (help) is up, Tab / 1 / 2 / 3 stay
-            // inert so the user doesn't lose context underneath.
+            // CycleView / SwitchView are intercepted here so the active
+            // screen never sees them. Only fire when the active screen
+            // is a top-level view — overlays (help, forms) freeze the
+            // underlying view context.
             if screen.kind().is_some() {
                 match intent {
                     Intent::CycleView => {
@@ -142,9 +135,8 @@ fn event_loop(
                     if let Some(kind) = screen.kind() {
                         previous_view = kind;
                     }
-                    // Re-read events from disk so the form sees the same
-                    // snapshot the user just chose from. event_index is
-                    // 1-based; missing index → silently no-op.
+                    // Reload from disk so the form sees the current snapshot,
+                    // not a screen-local cache. event_index is 1-based.
                     let events = repo.load()?.events;
                     if let Some(event) = events.get(event_index.saturating_sub(1)) {
                         *screen = Screen::EventForm(EventForm::new_for_edit(
@@ -402,11 +394,16 @@ Views:
   3                   Jump to Grid view
   u                   Cycle current view's time unit (month ↔ week)
 
-Common keys:
-  q                   Close current overlay (close help) or quit at top level
-  Ctrl+C              Quit the app from anywhere (force quit)
+Quit / dismiss (scope is precise — `?` inside the TUI shows the full spec):
+  Ctrl+C              Quit the app from anywhere
+  q (in a view)       Quit the app
+  q (in help)         Close help
+  q (in a form)       Typed into the focused text field
+  Esc (in a view)     No-op (use q or Ctrl+C to quit)
+  Esc (in help)       Close help
+  Esc (in a form)     Cancel form (discard changes)
+  Esc (in Remove)     Exit Remove mode (discard marks)
   ?                   Open / close in-app help overlay
-  Esc                 Cancel modal state / close help / quit at top level
   j | Down            Down / next row / next week (Grid)
   k | Up              Up / previous row / previous week (Grid)
   h | Left            Previous day (Grid)

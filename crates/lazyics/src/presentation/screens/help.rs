@@ -1,12 +1,10 @@
-//! In-app help overlay.
-//!
-//! Renders all keybindings grouped by context. Opened from any view by
-//! `?` (Browse mode), closed by `?` again, `Esc`, or `q` (soft Quit —
-//! same affordance as `less` / `man`). `Ctrl+C` still force-quits the
-//! whole app from inside the overlay. The overlay uses Browse keymap
-//! (no text input) but is treated as a non-view by the Composition Root
-//! (`Screen::kind()` returns `None`), which is how view-switching
-//! shortcuts get inert while help is on screen.
+//! In-app help overlay — also the **canonical behavior spec** for
+//! lazyics. The rendered content describes every keybinding in every
+//! context it's reachable; the implementation must match the help text
+//! exactly. (See `feedback-help-text-is-a-contract` memory.) Code
+//! comments that re-state what the help text already covers are
+//! redundant by design; only "why" / non-obvious invariants are
+//! commented in the screen modules.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};
@@ -41,17 +39,8 @@ impl HelpScreen {
     pub fn handle(&mut self, intent: Intent) -> ScreenAction {
         self.transient_status = None;
         match intent {
-            // `Ctrl+C` is the only hard-exit affordance from the help
-            // overlay — the user explicitly opted for "kill everything".
             Intent::ForceQuit => ScreenAction::Quit,
-            // The three "close help" affordances. `Quit` (`q`) closes
-            // the overlay rather than the app — matching `less` / `man`
-            // / `vim` `q` semantics. `OpenHelp` toggling closes when the
-            // overlay is already up.
             Intent::Quit | Intent::Cancel | Intent::OpenHelp => ScreenAction::DismissHelp,
-            // Everything else: ignore. Listing the variants keeps the
-            // match exhaustive and tells future readers each intent was
-            // considered.
             Intent::NavUp
             | Intent::NavDown
             | Intent::NavLeft
@@ -107,7 +96,7 @@ fn header(text: &'static str) -> Line<'static> {
 fn binding(keys: &'static str, desc: &'static str) -> Line<'static> {
     Line::from(vec![
         Span::raw("  "),
-        Span::styled(format!("{keys:<22}"), Style::default().fg(Color::Cyan)),
+        Span::styled(format!("{keys:<30}"), Style::default().fg(Color::Cyan)),
         Span::raw(desc),
     ])
 }
@@ -118,25 +107,29 @@ fn blank() -> Line<'static> {
 
 fn help_lines() -> Vec<Line<'static>> {
     vec![
-        header("Global"),
-        binding(
-            "q",
-            "Close current overlay (close help) or quit at top level",
-        ),
-        binding("Ctrl+C", "Quit the app from anywhere"),
-        binding("?", "Open / close this help"),
-        binding("Esc", "Cancel modal state / close help / quit at top level"),
+        header("Quit / dismiss (scope is precise)"),
+        binding("Ctrl+C", "Quit the app (anywhere — overlays, forms, views)"),
+        binding("q (in a view)", "Quit the app"),
+        binding("q (in help)", "Close help"),
+        binding("q (in a form)", "Typed into the focused text field"),
+        binding("Esc (in a view)", "No-op (use q or Ctrl+C to quit)"),
+        binding("Esc (in help)", "Close help"),
+        binding("Esc (in a form)", "Cancel form (discard changes)"),
+        binding("Esc (in Remove mode)", "Exit Remove mode (discard marks)"),
         blank(),
-        header("View switching"),
+        header("Always available"),
+        binding("?", "Open / close this help"),
+        blank(),
+        header("View switching (Browse only)"),
         binding("Tab", "Cycle List → Timeline → Grid → List"),
         binding("1 / 2 / 3", "Jump to List / Timeline / Grid"),
         binding("u", "Cycle current view's time unit (month ↔ week)"),
         blank(),
-        header("Movement"),
+        header("Movement (Browse only)"),
         binding("j | Down", "Down / next row / next week (Grid)"),
         binding("k | Up", "Up / previous row / previous week (Grid)"),
-        binding("h | Left", "Previous day (Grid)"),
-        binding("l | Right", "Next day (Grid)"),
+        binding("h | Left", "Previous day (Grid only — no-op elsewhere)"),
+        binding("l | Right", "Next day (Grid only — no-op elsewhere)"),
         binding("g | Home", "First event / first of period"),
         binding("G | End", "Last event / last of period"),
         blank(),
@@ -144,18 +137,24 @@ fn help_lines() -> Vec<Line<'static>> {
         binding("a", "Open Add form"),
         binding("e", "Open Edit form on selected event"),
         binding("d | x", "Enter multi-select Remove mode"),
-        binding("Space", "Toggle mark on selected row (Remove mode)"),
-        binding("Enter | Shift+D", "Confirm removal of marked events"),
+        binding("Space (in Remove)", "Toggle mark on selected row"),
+        binding(
+            "Enter | Shift+D (in Remove)",
+            "Confirm removal of marked events",
+        ),
         blank(),
         header("Add / Edit form"),
         binding("Tab | Shift+Tab", "Next / previous field"),
+        binding("Down | Up", "Same as Tab / Shift+Tab"),
         binding(
             "Left | Right",
-            "Cursor in text fields; cycle prev/next for pickers",
+            "Cursor in text fields; cycle prev/next on pickers",
         ),
-        binding("Space", "Cycle next on busy-status / class pickers"),
+        binding("Home | End", "Start / end of focused text field"),
+        binding("Space (on pickers)", "Cycle next on busy-status / class"),
         binding("Ctrl+S | Enter", "Submit (validates required fields)"),
-        binding("Esc", "Cancel and return to the previous view"),
+        binding("Backspace", "Delete character before cursor (text fields)"),
+        binding("Any other printable key", "Typed into focused text field"),
     ]
 }
 

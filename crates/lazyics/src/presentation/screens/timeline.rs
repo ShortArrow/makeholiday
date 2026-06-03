@@ -118,7 +118,8 @@ impl TimelineScreen {
     pub fn handle(&mut self, intent: Intent) -> ScreenAction {
         self.transient_status = None;
         match intent {
-            Intent::Quit | Intent::ForceQuit | Intent::Cancel => ScreenAction::Quit,
+            Intent::Quit | Intent::ForceQuit => ScreenAction::Quit,
+            Intent::Cancel => ScreenAction::Continue,
             Intent::NavDown => {
                 self.move_event_cursor(1);
                 ScreenAction::Continue
@@ -142,11 +143,6 @@ impl TimelineScreen {
                 ScreenAction::Continue
             }
             Intent::OpenHelp => ScreenAction::OpenHelp,
-            // Phase 4a: Remove / Add / Edit live in the List view; here
-            // they are no-ops so users get predictable cross-view keymap
-            // muscle memory. Form-mode intents are likewise unreachable
-            // here (Timeline is never the active screen in Form keymap
-            // mode) but listing them keeps the match exhaustive.
             Intent::OpenRemove
             | Intent::OpenAdd
             | Intent::OpenEdit
@@ -398,10 +394,10 @@ mod tests {
     }
 
     #[test]
-    fn quit_intent_returns_quit() {
+    fn quit_intent_returns_quit_cancel_is_noop() {
         let mut s = TimelineScreen::from_events(&three_events_in_three_months(), "h.ics");
         assert_eq!(s.handle(Intent::Quit), ScreenAction::Quit);
-        assert_eq!(s.handle(Intent::Cancel), ScreenAction::Quit);
+        assert_eq!(s.handle(Intent::Cancel), ScreenAction::Continue);
     }
 
     #[test]

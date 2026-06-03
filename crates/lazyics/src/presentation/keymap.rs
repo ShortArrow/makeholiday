@@ -1,101 +1,58 @@
-//! Key event → [`Intent`] mapping.
-//!
-//! Keymapping is **context-aware**: in [`KeymapMode::Browse`] (List /
-//! Timeline / Grid views) keys are interpreted as navigation / modal-
-//! action intents, while in [`KeymapMode::Form`] (Add / Edit forms)
-//! printable characters become [`Intent::TypeChar`] so the focused text
-//! field receives them and Tab/Shift+Tab navigate fields instead of
-//! cycling views.
+//! Key event → [`Intent`] mapping. The rendered user-facing contract
+//! lives in `presentation::screens::help` — that screen is the spec for
+//! which physical keys produce which intents in which mode.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::presentation::screens::ViewKind;
 
-/// Whether the active screen interprets keypresses as navigation
-/// (`Browse`) or as text input + field nav (`Form`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeymapMode {
     Browse,
     Form,
 }
 
-/// High-level user intent produced by a single key press.
+/// High-level user intent produced by a single key press. See the help
+/// overlay for the per-context behavior of each variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Intent {
-    /// "Soft" quit — produced by `q` in Browse mode. The active screen
-    /// interprets this contextually: in a top-level view it exits the
-    /// app; in an overlay like the help screen it closes the overlay
-    /// instead. (Modeled after `less` / `man` / `vim` `q`.)
+    /// Soft quit — `q` in Browse mode. Screens interpret it contextually
+    /// (view → exit app; overlay → close overlay).
     Quit,
-    /// "Hard" quit — produced by `Ctrl+C` from anywhere. Always exits
-    /// the app immediately, regardless of overlays or modal state.
+    /// Hard quit — `Ctrl+C`. Always exits.
     ForceQuit,
-    /// Back out of the current modal state. The active screen interprets
-    /// this contextually: in a top-level browse view it falls through to
-    /// [`Intent::Quit`]; in multi-select Remove mode it discards the marks
-    /// and returns to browse; in a form it dismisses the form.
+    /// Back out of the current modal state. Pure "go up one level":
+    /// closes overlays, cancels forms, exits Remove mode. Never exits
+    /// the app — the help overlay is the authority on that.
     Cancel,
-    /// Move selection one row up.
     NavUp,
-    /// Move selection one row down.
     NavDown,
-    /// Move selection one column left. Used by Grid and by `TextInput`
-    /// cursor movement; List/Timeline ignore.
     NavLeft,
-    /// Move selection one column right. Used by Grid and by `TextInput`
-    /// cursor movement; List/Timeline ignore.
     NavRight,
-    /// Move selection to the first row / cell.
     NavTop,
-    /// Move selection to the last row / cell.
     NavBottom,
-    /// Cycle to the next view (Tab in Browse mode):
-    /// List → Timeline → Grid → List. Composition-Root level intent.
     CycleView,
-    /// Jump to a specific view (number keys 1/2/3, Browse mode only).
     SwitchView(ViewKind),
-    /// Cycle the active view's time granularity. List ignores; Timeline
-    /// cycles month ↔ week; Grid cycles month ↔ week.
     CycleGranularity,
-    /// Enter multi-select Remove mode (List view, Browse).
     OpenRemove,
-    /// Open the Add form (List view, Browse).
     OpenAdd,
-    /// Open the Edit form on the currently-selected event
-    /// (List view, Browse).
     OpenEdit,
-    /// Open / toggle the in-app help overlay. Sent by `?` in Browse mode;
-    /// in the help overlay the same key re-emits and closes it.
+    /// Toggle the help overlay. Same key opens and closes.
     OpenHelp,
-    /// Toggle the mark on the currently-selected row (List Remove mode).
     ToggleMark,
-    /// Confirm the current modal action — in List Remove mode, submit
-    /// the marked indices to `icscli::application::use_cases::remove`.
     Confirm,
-    /// Form-mode intents (Phase 3b additions).
-    /// Insert a typed character into the focused field.
     TypeChar(char),
-    /// Delete the character immediately before the cursor.
     Backspace,
-    /// Move focus to the next field (Tab in Form mode).
     NextField,
-    /// Move focus to the previous field (Shift+Tab in Form mode).
     PrevField,
-    /// Submit the entire form (Ctrl+S in Form mode, or Enter on the
-    /// last field). AddForm validates and either returns
-    /// `ScreenAction::SubmitAdd(...)` or stays put with an error banner.
     SubmitForm,
 }
 
-/// Map a single [`KeyEvent`] to an [`Intent`]. The mapping depends on
-/// `mode` — see [`KeymapMode`].
 pub fn map(event: KeyEvent, mode: KeymapMode) -> Option<Intent> {
-    // crossterm emits Press / Release / Repeat. We only act on Press so
-    // that a quick `q` tap doesn't quit twice.
+    // Press only: a quick tap shouldn't fire twice via the Release event.
     if event.kind != KeyEventKind::Press {
         return None;
     }
-
     match mode {
         KeymapMode::Browse => map_browse(event),
         KeymapMode::Form => map_form(event),
@@ -110,49 +67,29 @@ fn map_browse(event: KeyEvent) -> Option<Intent> {
 
         (KeyCode::Char('j'), KeyModifiers::NONE) => Some(Intent::NavDown),
         (KeyCode::Down, _) => Some(Intent::NavDown),
-
         (KeyCode::Char('k'), KeyModifiers::NONE) => Some(Intent::NavUp),
         (KeyCode::Up, _) => Some(Intent::NavUp),
-
         (KeyCode::Char('h'), KeyModifiers::NONE) => Some(Intent::NavLeft),
         (KeyCode::Left, _) => Some(Intent::NavLeft),
-
         (KeyCode::Char('l'), KeyModifiers::NONE) => Some(Intent::NavRight),
         (KeyCode::Right, _) => Some(Intent::NavRight),
-
         (KeyCode::Char('g'), KeyModifiers::NONE) => Some(Intent::NavTop),
         (KeyCode::Home, _) => Some(Intent::NavTop),
-
         (KeyCode::Char('G'), KeyModifiers::SHIFT) => Some(Intent::NavBottom),
         (KeyCode::End, _) => Some(Intent::NavBottom),
 
-        // View switching (Phase 4a).
         (KeyCode::Tab, _) => Some(Intent::CycleView),
         (KeyCode::Char('1'), KeyModifiers::NONE) => Some(Intent::SwitchView(ViewKind::List)),
         (KeyCode::Char('2'), KeyModifiers::NONE) => Some(Intent::SwitchView(ViewKind::Timeline)),
         (KeyCode::Char('3'), KeyModifiers::NONE) => Some(Intent::SwitchView(ViewKind::Grid)),
-
-        // Granularity cycle ("u" for "unit").
         (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Intent::CycleGranularity),
-
-        // Add form entry (Phase 3b).
         (KeyCode::Char('a'), KeyModifiers::NONE) => Some(Intent::OpenAdd),
-
-        // Edit form entry (Phase 3c).
         (KeyCode::Char('e'), KeyModifiers::NONE) => Some(Intent::OpenEdit),
-
-        // In-app help overlay. `?` is Shift+/ on most layouts, so this
-        // arrives as Char('?') with the Shift modifier set.
+        // `?` arrives as Char('?') with Shift on most layouts; accept any modifiers.
         (KeyCode::Char('?'), _) => Some(Intent::OpenHelp),
-
-        // Remove-mode entry: ADR-025 §"Initial scope" binds d and x.
         (KeyCode::Char('d'), KeyModifiers::NONE) => Some(Intent::OpenRemove),
         (KeyCode::Char('x'), KeyModifiers::NONE) => Some(Intent::OpenRemove),
-
-        // Mark toggle for multi-select.
         (KeyCode::Char(' '), KeyModifiers::NONE) => Some(Intent::ToggleMark),
-
-        // Confirm: Enter or Shift+D (ADR-025 §"Initial scope": "D / Enter").
         (KeyCode::Enter, _) => Some(Intent::Confirm),
         (KeyCode::Char('D'), KeyModifiers::SHIFT) => Some(Intent::Confirm),
 
@@ -162,31 +99,25 @@ fn map_browse(event: KeyEvent) -> Option<Intent> {
 
 fn map_form(event: KeyEvent) -> Option<Intent> {
     match (event.code, event.modifiers) {
-        // Hard-exit shortcut works everywhere; `q` in Form mode is just
-        // a typed character so the soft Quit intent never fires here.
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => Some(Intent::ForceQuit),
         (KeyCode::Esc, _) => Some(Intent::Cancel),
-
-        // Submission shortcuts.
         (KeyCode::Char('s'), KeyModifiers::CONTROL) => Some(Intent::SubmitForm),
         (KeyCode::Enter, _) => Some(Intent::SubmitForm),
 
-        // Field navigation.
         (KeyCode::Tab, KeyModifiers::NONE) => Some(Intent::NextField),
         (KeyCode::BackTab, _) => Some(Intent::PrevField),
         (KeyCode::Tab, KeyModifiers::SHIFT) => Some(Intent::PrevField),
         (KeyCode::Down, _) => Some(Intent::NextField),
         (KeyCode::Up, _) => Some(Intent::PrevField),
 
-        // Text-input editing.
         (KeyCode::Backspace, _) => Some(Intent::Backspace),
         (KeyCode::Left, _) => Some(Intent::NavLeft),
         (KeyCode::Right, _) => Some(Intent::NavRight),
         (KeyCode::Home, _) => Some(Intent::NavTop),
         (KeyCode::End, _) => Some(Intent::NavBottom),
 
-        // Any printable character (incl. Shift-letters) becomes TypeChar.
-        // We exclude Ctrl-modified keys so Ctrl+C / Ctrl+S land above.
+        // Printable char fallthrough — Ctrl-modified keys excluded so
+        // Ctrl+C / Ctrl+S above still win.
         (KeyCode::Char(c), m) if !m.contains(KeyModifiers::CONTROL) => Some(Intent::TypeChar(c)),
 
         _ => None,

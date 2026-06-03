@@ -116,7 +116,8 @@ impl GridScreen {
     pub fn handle(&mut self, intent: Intent) -> ScreenAction {
         self.transient_status = None;
         match intent {
-            Intent::Quit | Intent::ForceQuit | Intent::Cancel => ScreenAction::Quit,
+            Intent::Quit | Intent::ForceQuit => ScreenAction::Quit,
+            Intent::Cancel => ScreenAction::Continue,
             Intent::NavLeft => {
                 self.cursor = self.cursor - Days::new(1);
                 ScreenAction::Continue
@@ -152,10 +153,6 @@ impl GridScreen {
                 ScreenAction::Continue
             }
             Intent::OpenHelp => ScreenAction::OpenHelp,
-            // Phase 4a: Remove / Add / mark / confirm belong to List view
-            // only. Form-mode intents are unreachable here (Grid is never
-            // the active screen in Form keymap mode) but listing them
-            // keeps the match exhaustive.
             Intent::OpenRemove
             | Intent::OpenAdd
             | Intent::OpenEdit
@@ -449,10 +446,10 @@ mod tests {
     }
 
     #[test]
-    fn quit_and_cancel_return_quit_action() {
+    fn quit_returns_quit_action_cancel_is_noop() {
         let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
         assert_eq!(s.handle(Intent::Quit), ScreenAction::Quit);
-        assert_eq!(s.handle(Intent::Cancel), ScreenAction::Quit);
+        assert_eq!(s.handle(Intent::Cancel), ScreenAction::Continue);
     }
 
     #[test]

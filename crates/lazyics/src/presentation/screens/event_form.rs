@@ -236,9 +236,6 @@ impl EventForm {
                 }
                 ScreenAction::Continue
             }
-            // Browse-mode intents are unreachable while the form is
-            // active (keymap is in Form mode); listing them keeps the
-            // match exhaustive.
             Intent::NavUp
             | Intent::NavDown
             | Intent::CycleView

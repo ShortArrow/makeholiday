@@ -118,21 +118,16 @@ impl ListScreen {
         matches!(self.mode, Mode::Remove { .. })
     }
 
-    /// Apply an [`Intent`]. Returns whether the app should keep looping,
-    /// quit, or submit a remove request to the Composition Root.
     pub fn handle(&mut self, intent: Intent) -> ScreenAction {
-        // Any user interaction clears the previous status message — except
-        // when the new intent itself produces a fresh one (handled by
-        // Composition Root, which sets it after `handle` returns).
+        // Composition Root re-sets `transient_status` after `handle`
+        // returns if it has a fresh message — so blanket-clearing here
+        // is safe.
         self.transient_status = None;
 
         match intent {
             Intent::Quit | Intent::ForceQuit => ScreenAction::Quit,
             Intent::Cancel => match self.mode {
-                // Esc at the top level quits, matching the original
-                // Phase 1 behavior (q/Ctrl+C still work too).
-                Mode::Browse => ScreenAction::Quit,
-                // Esc in Remove mode discards marks and returns to Browse.
+                Mode::Browse => ScreenAction::Continue,
                 Mode::Remove { .. } => {
                     self.mode = Mode::Browse;
                     ScreenAction::Continue
@@ -178,35 +173,25 @@ impl ListScreen {
             }
             Intent::Confirm => match &self.mode {
                 Mode::Remove { marked } if !marked.is_empty() => {
-                    // Convert 0-based to 1-based for `icscli`'s index spec.
+                    // 0-based marks → 1-based for `icscli`'s index spec.
                     let indices: Vec<usize> = marked.iter().map(|i| i + 1).collect();
                     ScreenAction::RemoveByIndices(indices)
                 }
                 _ => ScreenAction::Continue,
             },
-            // 'a' opens the Add form. List is the only view that hosts
-            // forms per ADR-025 §"Multi-view amendment".
-            Intent::OpenAdd => {
-                if matches!(self.mode, Mode::Browse) {
-                    ScreenAction::OpenAdd
-                } else {
-                    // In Remove mode, swallow 'a' to avoid the user
-                    // losing their marks via a misfire.
-                    ScreenAction::Continue
-                }
-            }
-            // 'e' opens the Edit form on the selected event. Browse mode
-            // only; a no-op when no row is selected.
+            Intent::OpenAdd => match self.mode {
+                // Browse mode opens the form; Remove mode swallows `a`
+                // so the user doesn't lose marks via a misfire.
+                Mode::Browse => ScreenAction::OpenAdd,
+                Mode::Remove { .. } => ScreenAction::Continue,
+            },
             Intent::OpenEdit => match (&self.mode, self.state.selected()) {
                 (Mode::Browse, Some(idx)) => ScreenAction::OpenEdit {
                     event_index: idx + 1,
                 },
                 _ => ScreenAction::Continue,
             },
-            // '?' opens the help overlay regardless of mode.
             Intent::OpenHelp => ScreenAction::OpenHelp,
-            // List view has a single column and no granularity — these
-            // intents are meaningful in Grid / Timeline / forms only.
             Intent::NavLeft
             | Intent::NavRight
             | Intent::CycleGranularity
@@ -453,9 +438,9 @@ mod tests {
     }
 
     #[test]
-    fn cancel_in_browse_quits() {
+    fn cancel_in_browse_is_noop() {
         let mut s = ListScreen::from_events(&three_events(), "h.ics");
-        assert_eq!(s.handle(Intent::Cancel), ScreenAction::Quit);
+        assert_eq!(s.handle(Intent::Cancel), ScreenAction::Continue);
     }
 
     #[test]
