@@ -290,8 +290,9 @@ impl EventForm {
 
     fn type_char(&mut self, c: char) {
         match self.focus {
-            BUSY | CLASS if c == ' ' => self.cycle_picker(1),
-            BUSY | CLASS => {} // ignore other printable chars on pickers
+            BUSY | CLASS if c == ' ' || c == 'l' => self.cycle_picker(1),
+            BUSY | CLASS if c == 'h' => self.cycle_picker(-1),
+            BUSY | CLASS => {} // other printable chars are no-ops on pickers
             _ => {
                 if let Some(field) = self.focused_text_input_mut() {
                     field.insert_char(c);
@@ -697,6 +698,30 @@ mod tests {
         assert_eq!(f.busystatus(), MsBusyStatus::Busy);
         f.handle(Intent::NavLeft);
         assert_eq!(f.busystatus(), MsBusyStatus::Tentative);
+    }
+
+    #[test]
+    fn h_and_l_cycle_picker_on_busystatus_field() {
+        let mut f = EventForm::new_for_add("h.ics");
+        for _ in 0..BUSY {
+            f.handle(Intent::NextField);
+        }
+        assert_eq!(f.busystatus(), MsBusyStatus::Free);
+        f.handle(Intent::TypeChar('l')); // forward
+        assert_eq!(f.busystatus(), MsBusyStatus::Tentative);
+        f.handle(Intent::TypeChar('l'));
+        assert_eq!(f.busystatus(), MsBusyStatus::Busy);
+        f.handle(Intent::TypeChar('h')); // back
+        assert_eq!(f.busystatus(), MsBusyStatus::Tentative);
+    }
+
+    #[test]
+    fn h_and_l_in_text_field_are_typed_chars() {
+        let mut f = EventForm::new_for_add("h.ics");
+        // Focused on Summary (text field).
+        f.handle(Intent::TypeChar('h'));
+        f.handle(Intent::TypeChar('l'));
+        assert_eq!(f.summary.value(), "hl");
     }
 
     #[test]

@@ -120,6 +120,9 @@ fn map_form(event: KeyEvent) -> Option<Intent> {
         (KeyCode::Tab, KeyModifiers::SHIFT) => Some(Intent::PrevField),
         (KeyCode::Down, _) => Some(Intent::NextField),
         (KeyCode::Up, _) => Some(Intent::PrevField),
+        // Emacs-style field navigation: Ctrl+P prev, Ctrl+N next.
+        (KeyCode::Char('p'), KeyModifiers::CONTROL) => Some(Intent::PrevField),
+        (KeyCode::Char('n'), KeyModifiers::CONTROL) => Some(Intent::NextField),
 
         (KeyCode::Backspace, _) => Some(Intent::Backspace),
         (KeyCode::Left, _) => Some(Intent::NavLeft),
@@ -239,6 +242,24 @@ mod tests {
         assert_eq!(
             map(press(KeyCode::Enter, KeyModifiers::NONE), KeymapMode::Form),
             Some(Intent::SubmitForm)
+        );
+    }
+
+    #[test]
+    fn ctrl_p_n_in_form_move_fields() {
+        assert_eq!(
+            map(
+                press(KeyCode::Char('p'), KeyModifiers::CONTROL),
+                KeymapMode::Form
+            ),
+            Some(Intent::PrevField)
+        );
+        assert_eq!(
+            map(
+                press(KeyCode::Char('n'), KeyModifiers::CONTROL),
+                KeymapMode::Form
+            ),
+            Some(Intent::NextField)
         );
     }
 

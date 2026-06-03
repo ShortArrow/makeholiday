@@ -177,9 +177,14 @@ fn help_lines() -> Vec<Line<'static>> {
         header("Add / Edit form"),
         binding("Tab | Shift+Tab", "Next / previous field"),
         binding("Down | Up", "Same as Tab / Shift+Tab"),
+        binding("Ctrl+N | Ctrl+P", "Same as Tab / Shift+Tab (emacs-style)"),
         binding(
             "Left | Right",
             "Cursor in text fields; cycle prev/next on pickers",
+        ),
+        binding(
+            "h | l (on pickers)",
+            "Cycle prev/next on busy-status / class",
         ),
         binding("Home | End", "Start / end of focused text field"),
         binding("Space (on pickers)", "Cycle next on busy-status / class"),

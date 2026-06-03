@@ -457,7 +457,9 @@ Grid jump pickers:
 
 Event form (Add / Edit):
   Tab | Shift+Tab     Next / previous field
+  Ctrl+N | Ctrl+P     Next / previous field (emacs-style)
   Left | Right        Cursor in text fields; cycle prev/next for pickers
+  h | l (on pickers)  Cycle prev/next on busy-status / class
   Space               Cycle next on busy-status / class pickers
   Ctrl+S | Enter      Submit (validates required fields)
   Esc                 Cancel and return to the previous view
