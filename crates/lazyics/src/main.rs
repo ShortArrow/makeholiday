@@ -392,7 +392,7 @@ Views:
   1                   Jump to List view
   2                   Jump to Timeline view
   3                   Jump to Grid view
-  u                   Cycle current view's time unit (month ↔ week)
+  u                   Cycle current view's time unit (week → month → year)
 
 Quit / dismiss (scope is precise — `?` inside the TUI shows the full spec):
   Ctrl+C              Quit the app from anywhere

@@ -21,22 +21,26 @@ use crate::presentation::screens::ScreenAction;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Granularity {
-    Month,
     Week,
+    Month,
+    Year,
 }
 
 impl Granularity {
+    /// 3-step rotation: week → month → year → week.
     pub fn cycle(self) -> Self {
         match self {
-            Granularity::Month => Granularity::Week,
             Granularity::Week => Granularity::Month,
+            Granularity::Month => Granularity::Year,
+            Granularity::Year => Granularity::Week,
         }
     }
 
     pub fn label(self) -> &'static str {
         match self {
-            Granularity::Month => "month",
             Granularity::Week => "week",
+            Granularity::Month => "month",
+            Granularity::Year => "year",
         }
     }
 }
@@ -277,6 +281,7 @@ fn build_rows(events: &[VEvent], granularity: Granularity) -> (Vec<Row>, Vec<usi
 
 fn group_label(date: chrono::NaiveDate, gran: Granularity) -> String {
     match gran {
+        Granularity::Year => date.format("%Y").to_string(),
         Granularity::Month => date.format("%Y-%m  %B %Y").to_string(),
         Granularity::Week => {
             // ISO weeks start on Monday. Compute the Monday of the date's
@@ -375,13 +380,34 @@ mod tests {
     }
 
     #[test]
-    fn cycle_granularity_toggles_month_and_week() {
+    fn cycle_granularity_rotates_through_three_steps() {
         let mut s = TimelineScreen::from_events(&three_events_in_three_months(), "h.ics");
         assert_eq!(s.granularity(), Granularity::Month);
+        s.handle(Intent::CycleGranularity);
+        assert_eq!(s.granularity(), Granularity::Year);
         s.handle(Intent::CycleGranularity);
         assert_eq!(s.granularity(), Granularity::Week);
         s.handle(Intent::CycleGranularity);
         assert_eq!(s.granularity(), Granularity::Month);
+    }
+
+    #[test]
+    fn year_granularity_groups_events_under_one_year_header() {
+        let events = vec![
+            make_event((2026, 1, 1), (2026, 1, 2), "a"),
+            make_event((2026, 6, 15), (2026, 6, 16), "b"),
+            make_event((2027, 1, 1), (2027, 1, 2), "c"),
+        ];
+        let mut s = TimelineScreen::from_events(&events, "h.ics");
+        // Switch to Year granularity from default Month.
+        s.handle(Intent::CycleGranularity); // → Year
+        assert_eq!(s.granularity(), Granularity::Year);
+        let header_count = s
+            .rows
+            .iter()
+            .filter(|r| matches!(r, Row::Header(_)))
+            .count();
+        assert_eq!(header_count, 2); // 2026, 2027
     }
 
     #[test]

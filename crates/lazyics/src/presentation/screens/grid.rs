@@ -30,22 +30,26 @@ use crate::presentation::screens::ScreenAction;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Granularity {
-    Month,
     Week,
+    Month,
+    Year,
 }
 
 impl Granularity {
+    /// 3-step rotation: week → month → year → week.
     pub fn cycle(self) -> Self {
         match self {
-            Granularity::Month => Granularity::Week,
             Granularity::Week => Granularity::Month,
+            Granularity::Month => Granularity::Year,
+            Granularity::Year => Granularity::Week,
         }
     }
 
     pub fn label(self) -> &'static str {
         match self {
-            Granularity::Month => "month",
             Granularity::Week => "week",
+            Granularity::Month => "month",
+            Granularity::Year => "year",
         }
     }
 }
@@ -138,6 +142,7 @@ impl GridScreen {
                 self.cursor = match self.granularity {
                     Granularity::Month => first_of_month(self.cursor),
                     Granularity::Week => monday_of(self.cursor),
+                    Granularity::Year => first_of_year(self.cursor),
                 };
                 ScreenAction::Continue
             }
@@ -145,6 +150,7 @@ impl GridScreen {
                 self.cursor = match self.granularity {
                     Granularity::Month => last_of_month(self.cursor),
                     Granularity::Week => sunday_of(self.cursor),
+                    Granularity::Year => last_of_year(self.cursor),
                 };
                 ScreenAction::Continue
             }
@@ -183,6 +189,7 @@ impl GridScreen {
                 "lazyics — grid (week of {})",
                 monday_of(self.cursor).format("%Y-%m-%d")
             ),
+            Granularity::Year => format!("lazyics — grid ({})", self.cursor.format("%Y")),
         };
         let block = Block::default().title(title).borders(Borders::ALL);
         let grid_inner = block.inner(grid_area);
@@ -222,17 +229,25 @@ impl GridScreen {
     }
 
     fn render_grid_lines(&self) -> Vec<Line<'static>> {
+        match self.granularity {
+            Granularity::Week | Granularity::Month => self.render_month_or_week_lines(),
+            Granularity::Year => self.render_year_lines(),
+        }
+    }
+
+    fn render_month_or_week_lines(&self) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
         lines.push(Line::raw(" Mon  Tue  Wed  Thu  Fri  Sat  Sun"));
 
         let weeks = match self.granularity {
             Granularity::Month => 6,
             Granularity::Week => 1,
+            Granularity::Year => unreachable!(),
         };
-
         let start = match self.granularity {
             Granularity::Month => monday_of(first_of_month(self.cursor)),
             Granularity::Week => monday_of(self.cursor),
+            Granularity::Year => unreachable!(),
         };
         let anchor_month = self.cursor.month();
 
@@ -246,12 +261,96 @@ impl GridScreen {
                     style = style.add_modifier(Modifier::DIM);
                 }
                 if date == self.cursor {
-                    style = style.add_modifier(Modifier::REVERSED);
+                    style = style.add_modifier(Modifier::REVERSED).fg(Color::Yellow);
+                }
+                spans.push(Span::styled(cell, style));
+            }
+            lines.push(Line::from(spans));
+        }
+        lines
+    }
+
+    /// Year view: 12 mini-months laid out as 4 rows × 3 columns
+    /// (`cal -y` style). Each mini cell is 22 chars wide so 3 fit in
+    /// ~70 columns. Cursor day is highlighted across whichever mini
+    /// grid contains it; events are marked with `*` in the cell.
+    fn render_year_lines(&self) -> Vec<Line<'static>> {
+        const COLS: u32 = 3;
+        let year = self.cursor.year();
+        let mut lines = Vec::new();
+
+        // 4 rows × 3 columns of mini-months.
+        for row in 0..4 {
+            let month_base = row * COLS + 1; // 1-based first month in this row
+            let mut mini_lines: Vec<Vec<Line<'static>>> = Vec::with_capacity(COLS as usize);
+            for col in 0..COLS {
+                let m = month_base + col;
+                mini_lines.push(self.render_mini_month(year, m));
+            }
+            // Each mini-month has 8 lines (title + dow + 6 weeks). Glue
+            // the three side by side, then push 1 blank line between rows.
+            let height = mini_lines[0].len();
+            for i in 0..height {
+                let mut combined: Vec<Span<'static>> = Vec::new();
+                for (col, mini) in mini_lines.iter().enumerate() {
+                    if col > 0 {
+                        combined.push(Span::raw("  "));
+                    }
+                    combined.extend(mini[i].spans.clone());
+                }
+                lines.push(Line::from(combined));
+            }
+            lines.push(Line::raw(""));
+        }
+        lines
+    }
+
+    fn render_mini_month(&self, year: i32, month: u32) -> Vec<Line<'static>> {
+        let first = NaiveDate::from_ymd_opt(year, month, 1).expect("valid first of month");
+        let month_name = match month {
+            1 => "January",
+            2 => "February",
+            3 => "March",
+            4 => "April",
+            5 => "May",
+            6 => "June",
+            7 => "July",
+            8 => "August",
+            9 => "September",
+            10 => "October",
+            11 => "November",
+            12 => "December",
+            _ => unreachable!(),
+        };
+        // Cell width per day: 3 chars including separator. 7 days = 21.
+        let title = format!("{:^21}", month_name);
+        let dow = " Mo Tu We Th Fr Sa Su";
+        let mut lines = Vec::with_capacity(8);
+        lines.push(Line::from(Span::styled(
+            title,
+            Style::default().add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::raw(dow));
+
+        let start = monday_of(first);
+        for week in 0..6 {
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            for d in 0..7 {
+                let date = start + Days::new(week * 7 + d);
+                let in_month = date.month() == month && date.year() == year;
+                let has_event = self.events_by_date.contains_key(&date);
+                let cell = if in_month {
+                    let marker = if has_event { '*' } else { ' ' };
+                    format!(" {:>2}{}", date.day(), marker)
+                } else {
+                    "    ".to_string()
+                };
+                let mut style = Style::default();
+                if !in_month {
+                    style = style.add_modifier(Modifier::DIM);
                 }
                 if date == self.cursor {
-                    // Add a foreground color to make the reversed cell pop
-                    // distinctly from a row-highlight.
-                    style = style.fg(Color::Yellow);
+                    style = style.add_modifier(Modifier::REVERSED).fg(Color::Yellow);
                 }
                 spans.push(Span::styled(cell, style));
             }
@@ -306,6 +405,14 @@ fn last_of_month(date: NaiveDate) -> NaiveDate {
     }
     .expect("next month first always valid");
     next_month_first - Days::new(1)
+}
+
+fn first_of_year(date: NaiveDate) -> NaiveDate {
+    NaiveDate::from_ymd_opt(date.year(), 1, 1).expect("Jan 1 always valid")
+}
+
+fn last_of_year(date: NaiveDate) -> NaiveDate {
+    NaiveDate::from_ymd_opt(date.year(), 12, 31).expect("Dec 31 always valid")
 }
 
 // Suppress unused warning — kept available for future "jump to weekday" logic.
@@ -404,6 +511,8 @@ mod tests {
     #[test]
     fn nav_top_in_week_jumps_to_monday() {
         let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15)); // Friday
+        // Month → Year → Week (2 cycle hops to reach Week).
+        s.handle(Intent::CycleGranularity);
         s.handle(Intent::CycleGranularity);
         assert_eq!(s.granularity(), Granularity::Week);
         s.handle(Intent::NavTop);
@@ -414,13 +523,18 @@ mod tests {
     fn nav_bottom_in_week_jumps_to_sunday() {
         let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
         s.handle(Intent::CycleGranularity);
+        s.handle(Intent::CycleGranularity);
+        assert_eq!(s.granularity(), Granularity::Week);
         s.handle(Intent::NavBottom);
         assert_eq!(s.cursor(), day(2026, 5, 17)); // Sunday
     }
 
     #[test]
-    fn cycle_granularity_toggles_between_month_and_week() {
+    fn cycle_granularity_rotates_through_three_steps() {
         let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        assert_eq!(s.granularity(), Granularity::Month);
+        s.handle(Intent::CycleGranularity);
+        assert_eq!(s.granularity(), Granularity::Year);
         s.handle(Intent::CycleGranularity);
         assert_eq!(s.granularity(), Granularity::Week);
         s.handle(Intent::CycleGranularity);
@@ -430,8 +544,26 @@ mod tests {
     #[test]
     fn cycle_granularity_preserves_cursor_date() {
         let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
-        s.handle(Intent::CycleGranularity);
-        assert_eq!(s.cursor(), day(2026, 5, 15));
+        for _ in 0..3 {
+            s.handle(Intent::CycleGranularity);
+            assert_eq!(s.cursor(), day(2026, 5, 15));
+        }
+    }
+
+    #[test]
+    fn nav_top_in_year_jumps_to_jan_1() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::CycleGranularity); // → Year
+        s.handle(Intent::NavTop);
+        assert_eq!(s.cursor(), day(2026, 1, 1));
+    }
+
+    #[test]
+    fn nav_bottom_in_year_jumps_to_dec_31() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::CycleGranularity); // → Year
+        s.handle(Intent::NavBottom);
+        assert_eq!(s.cursor(), day(2026, 12, 31));
     }
 
     #[test]

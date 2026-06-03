@@ -125,7 +125,7 @@ fn help_lines() -> Vec<Line<'static>> {
         header("View switching (Browse only)"),
         binding("Tab", "Cycle List → Timeline → Grid → List"),
         binding("1 / 2 / 3", "Jump to List / Timeline / Grid"),
-        binding("u", "Cycle current view's time unit (month ↔ week)"),
+        binding("u", "Cycle current view's time unit (week → month → year)"),
         blank(),
         header("Movement (Browse only)"),
         binding("j | Down", "Down / next row / next week (Grid)"),
