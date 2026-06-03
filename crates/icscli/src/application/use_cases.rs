@@ -182,7 +182,7 @@ pub fn add<R: CalendarRepository>(
 /// "leave it alone". Toggles (`clear_categories`, `clear_icon`) are
 /// independent of the same-name fields and trigger removal even when
 /// no replacement is provided.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct EditPatch {
     pub summary: Option<String>,
     pub start: Option<NaiveDate>,

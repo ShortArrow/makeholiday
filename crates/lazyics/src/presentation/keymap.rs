@@ -55,6 +55,9 @@ pub enum Intent {
     OpenRemove,
     /// Open the Add form (List view, Browse).
     OpenAdd,
+    /// Open the Edit form on the currently-selected event
+    /// (List view, Browse).
+    OpenEdit,
     /// Toggle the mark on the currently-selected row (List Remove mode).
     ToggleMark,
     /// Confirm the current modal action — in List Remove mode, submit
@@ -125,6 +128,9 @@ fn map_browse(event: KeyEvent) -> Option<Intent> {
 
         // Add form entry (Phase 3b).
         (KeyCode::Char('a'), KeyModifiers::NONE) => Some(Intent::OpenAdd),
+
+        // Edit form entry (Phase 3c).
+        (KeyCode::Char('e'), KeyModifiers::NONE) => Some(Intent::OpenEdit),
 
         // Remove-mode entry: ADR-025 §"Initial scope" binds d and x.
         (KeyCode::Char('d'), KeyModifiers::NONE) => Some(Intent::OpenRemove),
@@ -304,6 +310,24 @@ mod tests {
         assert_eq!(
             map(press(KeyCode::Up, KeyModifiers::NONE), KeymapMode::Form),
             Some(Intent::PrevField)
+        );
+    }
+
+    #[test]
+    fn e_opens_edit_in_browse_types_e_in_form() {
+        assert_eq!(
+            map(
+                press(KeyCode::Char('e'), KeyModifiers::NONE),
+                KeymapMode::Browse
+            ),
+            Some(Intent::OpenEdit)
+        );
+        assert_eq!(
+            map(
+                press(KeyCode::Char('e'), KeyModifiers::NONE),
+                KeymapMode::Form
+            ),
+            Some(Intent::TypeChar('e'))
         );
     }
 

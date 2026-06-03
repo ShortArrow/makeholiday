@@ -24,7 +24,7 @@ use lazyics::error::{LazyicsError, Result};
 use lazyics::infrastructure::terminal::TerminalGuard;
 use lazyics::presentation::keymap::{self, Intent, KeymapMode};
 use lazyics::presentation::screens::{
-    AddForm, AddRequest, GridScreen, ListScreen, Screen, ScreenAction, TimelineScreen, ViewKind,
+    AddRequest, EventForm, GridScreen, ListScreen, Screen, ScreenAction, TimelineScreen, ViewKind,
 };
 
 const DEFAULT_FILE: &str = "calendar.ics";
@@ -132,15 +132,34 @@ fn event_loop(
                     apply_remove(repo, screen, file_label, &indices)?;
                 }
                 ScreenAction::OpenAdd => {
-                    // Remember the host view so DismissForm / SubmitAdd
-                    // can return the user to it.
                     if let Some(kind) = screen.kind() {
                         previous_view = kind;
                     }
-                    *screen = Screen::AddForm(AddForm::new(file_label.to_string()));
+                    *screen = Screen::EventForm(EventForm::new_for_add(file_label.to_string()));
+                }
+                ScreenAction::OpenEdit { event_index } => {
+                    if let Some(kind) = screen.kind() {
+                        previous_view = kind;
+                    }
+                    // Re-read events from disk so the form sees the same
+                    // snapshot the user just chose from. event_index is
+                    // 1-based; missing index → silently no-op.
+                    let events = repo.load()?.events;
+                    if let Some(event) = events.get(event_index.saturating_sub(1)) {
+                        *screen = Screen::EventForm(EventForm::new_for_edit(
+                            file_label.to_string(),
+                            event_index,
+                            event,
+                        ));
+                    } else {
+                        tracing::warn!(event_index, "OpenEdit pointed at missing event");
+                    }
                 }
                 ScreenAction::SubmitAdd(req) => {
                     apply_add(repo, screen, file_label, previous_view, req)?;
+                }
+                ScreenAction::SubmitEdit { event_index, patch } => {
+                    apply_edit(repo, screen, file_label, previous_view, event_index, patch)?;
                 }
                 ScreenAction::DismissForm => {
                     switch_view(repo, screen, previous_view, file_label)?;
@@ -252,6 +271,42 @@ fn apply_add(
     Ok(())
 }
 
+/// Submit a validated Edit request to `icscli::application::use_cases::edit`.
+/// Mirrors `apply_add`'s success / failure handling: success returns to
+/// `previous_view` with a transient banner; failure keeps the form active
+/// with the error on its status bar.
+fn apply_edit(
+    repo: &FileCalendarRepository,
+    screen: &mut Screen,
+    file_label: &str,
+    previous_view: ViewKind,
+    event_index: usize,
+    patch: icscli::application::use_cases::EditPatch,
+) -> Result<()> {
+    use lazyics::application::use_cases::{RunContext, edit};
+
+    let ctx = RunContext {
+        quiet: true,
+        allow_prompts: false,
+    };
+    let summary_for_msg = patch
+        .summary
+        .clone()
+        .unwrap_or_else(|| format!("event #{event_index}"));
+    match edit(repo, ctx, event_index, patch) {
+        Ok(()) => {
+            switch_view(repo, screen, previous_view, file_label)?;
+            screen.set_transient_status(format!("Edited: {summary_for_msg}"));
+            tracing::info!(event_index, summary = %summary_for_msg, "edit succeeded");
+        }
+        Err(e) => {
+            tracing::error!(error = %e, event_index, "edit failed");
+            screen.set_transient_status(format!("Edit failed: {e}"));
+        }
+    }
+    Ok(())
+}
+
 fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args> {
     let mut file: Option<PathBuf> = None;
     let mut log: Option<PathBuf> = None;
@@ -349,11 +404,12 @@ Common keys:
 
 List view:
   a                   Open Add form
+  e                   Open Edit form on the selected event
   d | x               Enter multi-select Remove mode
   Space               Toggle mark on highlighted row (Remove mode)
   Enter | Shift+D     Confirm removal of marked events
 
-Add form:
+Event form (Add / Edit):
   Tab | Shift+Tab     Next / previous field
   Left | Right        Cursor in text fields; cycle prev/next for pickers
   Space               Cycle next on busy-status / class pickers

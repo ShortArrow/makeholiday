@@ -1,6 +1,12 @@
-//! Add form — captures the 7 fields the CLI `add` subcommand accepts and
-//! produces an `AddRequest` for the Composition Root to submit through
-//! `icscli::application::use_cases::add`.
+//! Event form — captures the 7 fields the CLI's `add` / `edit` subcommands
+//! accept. Used in two modes ([`FormMode`]):
+//!
+//! - **Add** — blank form; on submit produces `ScreenAction::SubmitAdd`
+//!   carrying an [`AddRequest`].
+//! - **Edit** — pre-populated from the host event; on submit produces
+//!   `ScreenAction::SubmitEdit` carrying an `icscli` [`EditPatch`] plus
+//!   the 1-based event index so the Composition Root can drive
+//!   `icscli::application::use_cases::edit`.
 //!
 //! Field layout (top to bottom):
 //!   1. Summary       — TextInput, required
@@ -18,8 +24,9 @@
 //!   - `Left` / `Right` — TextInput cursor, or cycle picker prev/next
 //!   - Printable chars — typed into focused TextInput; Space cycles a picker
 
-use ics_core::EventClass;
 use ics_core::microsoft::MsBusyStatus;
+use ics_core::{EventClass, VEvent};
+use icscli::application::use_cases::EditPatch;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -47,8 +54,11 @@ const BUSY_STATUSES: &[MsBusyStatus] = &[
     MsBusyStatus::WorkingElsewhere,
 ];
 
-/// Class options. `None` = "(unset)", which omits `CLASS:` from the
-/// generated VEVENT.
+/// Class options. `None` = "(unset)", which in Add mode omits `CLASS:`
+/// from the generated VEVENT. In Edit mode it currently leaves the
+/// existing class alone (an `icscli::EditPatch.clear_class` would be
+/// needed to actually clear it — recorded as a Phase 3c limitation
+/// pending an upstream use-case enhancement).
 const CLASSES: &[Option<EventClass>] = &[
     None,
     Some(EventClass::Public),
@@ -56,7 +66,20 @@ const CLASSES: &[Option<EventClass>] = &[
     Some(EventClass::Confidential),
 ];
 
-pub struct AddForm {
+/// Which subcommand this form will produce on submit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FormMode {
+    Add,
+    /// Edit the event at the given 1-based index in the calendar's
+    /// `events` list. The index is the same one `icscli::use_cases::edit`
+    /// accepts.
+    Edit {
+        event_index: usize,
+    },
+}
+
+pub struct EventForm {
+    mode: FormMode,
     summary: TextInput,
     start: TextInput,
     end: TextInput,
@@ -73,9 +96,11 @@ pub struct AddForm {
     transient_status: Option<String>,
 }
 
-impl AddForm {
-    pub fn new(file_label: impl Into<String>) -> Self {
+impl EventForm {
+    /// Blank form, ready to add a new event.
+    pub fn new_for_add(file_label: impl Into<String>) -> Self {
         Self {
+            mode: FormMode::Add,
             summary: TextInput::new(),
             start: TextInput::new(),
             end: TextInput::new(),
@@ -88,6 +113,56 @@ impl AddForm {
             file_label: file_label.into(),
             transient_status: None,
         }
+    }
+
+    /// Pre-populated from `event`. `event_index` is the 1-based position
+    /// in the calendar's event list that `icscli::use_cases::edit`
+    /// expects.
+    pub fn new_for_edit(file_label: impl Into<String>, event_index: usize, event: &VEvent) -> Self {
+        let summary = TextInput::with_value(&event.summary);
+        let start = TextInput::with_value(event.dtstart.format("%Y-%m-%d").to_string());
+        // dtend is RFC-exclusive (+1 day from inclusive end). Leave the
+        // End field blank for single-day events so re-saving an unchanged
+        // form doesn't surprise the user with a populated end.
+        let end_inclusive = event.dtend - chrono::Days::new(1);
+        let end = if end_inclusive == event.dtstart {
+            TextInput::new()
+        } else {
+            TextInput::with_value(end_inclusive.format("%Y-%m-%d").to_string())
+        };
+        let busystatus = event
+            .microsoft
+            .as_ref()
+            .and_then(|m| m.busystatus)
+            .unwrap_or(MsBusyStatus::Free);
+        let class = event.class;
+        let categories = if event.categories.is_empty() {
+            TextInput::new()
+        } else {
+            TextInput::with_value(event.categories.join(", "))
+        };
+        let icon = match icscli::icons::read_icon(event) {
+            Some(name) => TextInput::with_value(name),
+            None => TextInput::new(),
+        };
+        Self {
+            mode: FormMode::Edit { event_index },
+            summary,
+            start,
+            end,
+            busystatus,
+            class,
+            categories,
+            icon,
+            focus: SUMMARY,
+            error: None,
+            file_label: file_label.into(),
+            transient_status: None,
+        }
+    }
+
+    pub fn mode(&self) -> FormMode {
+        self.mode
     }
 
     pub fn focus(&self) -> usize {
@@ -129,13 +204,7 @@ impl AddForm {
                 self.error = None;
                 ScreenAction::Continue
             }
-            Intent::SubmitForm => match self.validate() {
-                Ok(req) => ScreenAction::SubmitAdd(req),
-                Err(e) => {
-                    self.error = Some(e);
-                    ScreenAction::Continue
-                }
-            },
+            Intent::SubmitForm => self.submit_action(),
             Intent::TypeChar(c) => {
                 self.type_char(c);
                 ScreenAction::Continue
@@ -167,10 +236,9 @@ impl AddForm {
                 }
                 ScreenAction::Continue
             }
-            // Browse-mode intents are unreachable while the AddForm is
-            // the active screen (keymap is in Form mode), but listing
-            // them keeps the match exhaustive and protects against
-            // future intent additions silently dropping through.
+            // Browse-mode intents are unreachable while the form is
+            // active (keymap is in Form mode); listing them keeps the
+            // match exhaustive.
             Intent::NavUp
             | Intent::NavDown
             | Intent::CycleView
@@ -178,8 +246,28 @@ impl AddForm {
             | Intent::CycleGranularity
             | Intent::OpenRemove
             | Intent::OpenAdd
+            | Intent::OpenEdit
             | Intent::ToggleMark
             | Intent::Confirm => ScreenAction::Continue,
+        }
+    }
+
+    fn submit_action(&mut self) -> ScreenAction {
+        match self.mode {
+            FormMode::Add => match self.build_add_request() {
+                Ok(req) => ScreenAction::SubmitAdd(req),
+                Err(e) => {
+                    self.error = Some(e);
+                    ScreenAction::Continue
+                }
+            },
+            FormMode::Edit { event_index } => match self.build_edit_patch() {
+                Ok(patch) => ScreenAction::SubmitEdit { event_index, patch },
+                Err(e) => {
+                    self.error = Some(e);
+                    ScreenAction::Continue
+                }
+            },
         }
     }
 
@@ -250,10 +338,10 @@ impl AddForm {
         }
     }
 
-    /// Validate the form. On success, the `error` field is left untouched
-    /// (the caller is about to replace the screen); on failure the caller
-    /// stores the returned message in `error`.
-    pub fn validate(&self) -> Result<AddRequest, String> {
+    /// Shared validation: parse required fields, return an error string
+    /// on failure, otherwise hand back the parsed values for either
+    /// AddRequest or EditPatch construction.
+    fn parse_common(&self) -> Result<ParsedCommon, String> {
         let summary = self.summary.value().trim();
         if summary.is_empty() {
             return Err("Summary is required".into());
@@ -284,14 +372,50 @@ impl AddForm {
         } else {
             Some(icon_raw.to_string())
         };
-        Ok(AddRequest {
+        Ok(ParsedCommon {
             summary: summary.to_string(),
             start,
             end,
-            busystatus: self.busystatus,
-            class: self.class,
             categories,
             icon,
+        })
+    }
+
+    pub fn build_add_request(&self) -> Result<AddRequest, String> {
+        let p = self.parse_common()?;
+        Ok(AddRequest {
+            summary: p.summary,
+            start: p.start,
+            end: p.end,
+            busystatus: self.busystatus,
+            class: self.class,
+            categories: p.categories,
+            icon: p.icon,
+        })
+    }
+
+    pub fn build_edit_patch(&self) -> Result<EditPatch, String> {
+        let p = self.parse_common()?;
+        // Every field is submitted unconditionally — the user has seen
+        // the current value and either kept or modified it. `clear_*`
+        // flags are set when the corresponding text field has been
+        // emptied so the use case actually drops the existing data.
+        let categories_empty = p.categories.is_empty();
+        let icon_empty = p.icon.is_none();
+        Ok(EditPatch {
+            summary: Some(p.summary),
+            start: Some(p.start),
+            end: p.end,
+            busystatus: Some(self.busystatus),
+            class: self.class,
+            categories: if categories_empty {
+                None
+            } else {
+                Some(p.categories)
+            },
+            clear_categories: categories_empty,
+            icon: p.icon,
+            clear_icon: icon_empty,
         })
     }
 
@@ -360,7 +484,6 @@ impl AddForm {
             self.focus == ICON,
         );
 
-        // Error banner.
         if let Some(err) = &self.error {
             frame.render_widget(
                 Paragraph::new(Line::from(Span::styled(
@@ -371,11 +494,14 @@ impl AddForm {
             );
         }
 
-        // Status bar.
+        let mode_label = match self.mode {
+            FormMode::Add => "Add event".to_string(),
+            FormMode::Edit { event_index } => format!("Edit event #{event_index}"),
+        };
         let status_text = self.transient_status.clone().unwrap_or_else(|| {
             format!(
-                "{}  |  Add event  |  Tab/Shift+Tab field  ←/→ cursor/cycle  Ctrl+S or Enter submit  Esc cancel",
-                self.file_label,
+                "{}  |  {}  |  Tab/Shift+Tab field  ←/→ cursor/cycle  Ctrl+S or Enter submit  Esc cancel",
+                self.file_label, mode_label,
             )
         });
         frame.render_widget(Paragraph::new(status_text), areas[9]);
@@ -436,6 +562,14 @@ impl AddForm {
     }
 }
 
+struct ParsedCommon {
+    summary: String,
+    start: chrono::NaiveDate,
+    end: Option<chrono::NaiveDate>,
+    categories: Vec<String>,
+    icon: Option<String>,
+}
+
 fn busystatus_label(b: MsBusyStatus) -> &'static str {
     match b {
         MsBusyStatus::Free => "free",
@@ -459,46 +593,73 @@ fn class_label(c: Option<EventClass>) -> &'static str {
 mod tests {
     use super::*;
     use chrono::NaiveDate;
+    use ics_core::microsoft::EventExtensions as MsExtensions;
 
-    fn type_string(form: &mut AddForm, s: &str) {
+    fn type_string(form: &mut EventForm, s: &str) {
         for c in s.chars() {
             form.handle(Intent::TypeChar(c));
         }
     }
 
+    fn make_event() -> VEvent {
+        let dtstamp = NaiveDate::from_ymd_opt(2026, 6, 3)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        VEvent {
+            uid: "uid-original".to_string(),
+            dtstamp,
+            dtstart: NaiveDate::from_ymd_opt(2026, 5, 10).unwrap(),
+            // dtend exclusive ⇒ 2026-05-13 = inclusive end 2026-05-12.
+            dtend: NaiveDate::from_ymd_opt(2026, 5, 13).unwrap(),
+            summary: "Travel".to_string(),
+            transp: None,
+            class: Some(EventClass::Private),
+            categories: vec!["work".to_string(), "travel".to_string()],
+            microsoft: Some(MsExtensions {
+                busystatus: Some(MsBusyStatus::Oof),
+                unrecognized: vec![],
+            }),
+            google: None,
+            icloud: None,
+            unknown: vec![],
+            unrecognized_components: vec![],
+        }
+    }
+
     #[test]
-    fn new_starts_on_summary_with_defaults() {
-        let f = AddForm::new("h.ics");
+    fn add_form_starts_on_summary_with_defaults() {
+        let f = EventForm::new_for_add("h.ics");
         assert_eq!(f.focus(), SUMMARY);
         assert_eq!(f.busystatus(), MsBusyStatus::Free);
         assert_eq!(f.class(), None);
+        assert_eq!(f.mode(), FormMode::Add);
         assert!(f.error().is_none());
     }
 
     #[test]
     fn next_field_advances_and_wraps() {
-        let mut f = AddForm::new("h.ics");
+        let mut f = EventForm::new_for_add("h.ics");
         for i in 1..FIELD_COUNT {
             f.handle(Intent::NextField);
             assert_eq!(f.focus(), i);
         }
         f.handle(Intent::NextField);
-        assert_eq!(f.focus(), 0); // wrapped
+        assert_eq!(f.focus(), 0);
     }
 
     #[test]
     fn prev_field_wraps_backward() {
-        let mut f = AddForm::new("h.ics");
+        let mut f = EventForm::new_for_add("h.ics");
         f.handle(Intent::PrevField);
         assert_eq!(f.focus(), FIELD_COUNT - 1);
     }
 
     #[test]
     fn type_char_inserts_into_focused_text_field() {
-        let mut f = AddForm::new("h.ics");
+        let mut f = EventForm::new_for_add("h.ics");
         type_string(&mut f, "元日");
         assert_eq!(f.summary.value(), "元日");
-        // Tab to start date; new chars go there.
         f.handle(Intent::NextField);
         type_string(&mut f, "2026-01-01");
         assert_eq!(f.start.value(), "2026-01-01");
@@ -507,7 +668,7 @@ mod tests {
 
     #[test]
     fn space_cycles_busystatus_when_focused() {
-        let mut f = AddForm::new("h.ics");
+        let mut f = EventForm::new_for_add("h.ics");
         for _ in 0..BUSY {
             f.handle(Intent::NextField);
         }
@@ -523,7 +684,7 @@ mod tests {
 
     #[test]
     fn class_cycles_through_options_including_unset() {
-        let mut f = AddForm::new("h.ics");
+        let mut f = EventForm::new_for_add("h.ics");
         for _ in 0..CLASS {
             f.handle(Intent::NextField);
         }
@@ -535,24 +696,24 @@ mod tests {
         f.handle(Intent::NavRight);
         assert_eq!(f.class(), Some(EventClass::Confidential));
         f.handle(Intent::NavRight);
-        assert_eq!(f.class(), None); // wraps back to unset
+        assert_eq!(f.class(), None);
     }
 
     #[test]
     fn cancel_dismisses_form() {
-        let mut f = AddForm::new("h.ics");
+        let mut f = EventForm::new_for_add("h.ics");
         assert_eq!(f.handle(Intent::Cancel), ScreenAction::DismissForm);
     }
 
     #[test]
     fn quit_force_exits() {
-        let mut f = AddForm::new("h.ics");
+        let mut f = EventForm::new_for_add("h.ics");
         assert_eq!(f.handle(Intent::Quit), ScreenAction::Quit);
     }
 
     #[test]
     fn submit_with_empty_summary_records_error() {
-        let mut f = AddForm::new("h.ics");
+        let mut f = EventForm::new_for_add("h.ics");
         let action = f.handle(Intent::SubmitForm);
         assert_eq!(action, ScreenAction::Continue);
         assert!(f.error().unwrap().contains("Summary"));
@@ -560,7 +721,7 @@ mod tests {
 
     #[test]
     fn submit_with_invalid_start_records_error() {
-        let mut f = AddForm::new("h.ics");
+        let mut f = EventForm::new_for_add("h.ics");
         type_string(&mut f, "元日");
         f.handle(Intent::NextField);
         type_string(&mut f, "nonsense");
@@ -570,8 +731,8 @@ mod tests {
     }
 
     #[test]
-    fn submit_minimal_required_fields_produces_request() {
-        let mut f = AddForm::new("h.ics");
+    fn submit_minimal_required_fields_produces_add_request() {
+        let mut f = EventForm::new_for_add("h.ics");
         type_string(&mut f, "元日");
         f.handle(Intent::NextField);
         type_string(&mut f, "2026-01-01");
@@ -591,19 +752,19 @@ mod tests {
 
     #[test]
     fn submit_full_form_populates_all_fields() {
-        let mut f = AddForm::new("h.ics");
+        let mut f = EventForm::new_for_add("h.ics");
         type_string(&mut f, "Travel");
         f.handle(Intent::NextField);
         type_string(&mut f, "2026-05-10");
         f.handle(Intent::NextField);
         type_string(&mut f, "2026-05-12");
-        f.handle(Intent::NextField); // BUSY
-        f.handle(Intent::TypeChar(' ')); // Free -> Tentative
-        f.handle(Intent::TypeChar(' ')); // -> Busy
-        f.handle(Intent::TypeChar(' ')); // -> Oof
-        f.handle(Intent::NextField); // CLASS
-        f.handle(Intent::NavRight); // None -> Public
-        f.handle(Intent::NavRight); // -> Private
+        f.handle(Intent::NextField);
+        f.handle(Intent::TypeChar(' '));
+        f.handle(Intent::TypeChar(' '));
+        f.handle(Intent::TypeChar(' '));
+        f.handle(Intent::NextField);
+        f.handle(Intent::NavRight);
+        f.handle(Intent::NavRight);
         f.handle(Intent::NextField);
         type_string(&mut f, "work, travel");
         f.handle(Intent::NextField);
@@ -628,7 +789,7 @@ mod tests {
 
     #[test]
     fn submit_with_end_before_start_records_error() {
-        let mut f = AddForm::new("h.ics");
+        let mut f = EventForm::new_for_add("h.ics");
         type_string(&mut f, "x");
         f.handle(Intent::NextField);
         type_string(&mut f, "2026-05-10");
@@ -641,7 +802,7 @@ mod tests {
 
     #[test]
     fn categories_split_and_trim() {
-        let mut f = AddForm::new("h.ics");
+        let mut f = EventForm::new_for_add("h.ics");
         type_string(&mut f, "x");
         f.handle(Intent::NextField);
         type_string(&mut f, "2026-01-01");
@@ -662,10 +823,109 @@ mod tests {
 
     #[test]
     fn editing_clears_error() {
-        let mut f = AddForm::new("h.ics");
-        f.handle(Intent::SubmitForm); // error: Summary required
+        let mut f = EventForm::new_for_add("h.ics");
+        f.handle(Intent::SubmitForm);
         assert!(f.error().is_some());
         f.handle(Intent::TypeChar('a'));
         assert!(f.error().is_none());
+    }
+
+    // --- Edit-mode tests ----------------------------------------------
+
+    #[test]
+    fn edit_form_prepopulates_all_fields() {
+        let event = make_event();
+        let f = EventForm::new_for_edit("h.ics", 1, &event);
+        assert_eq!(f.mode(), FormMode::Edit { event_index: 1 });
+        assert_eq!(f.summary.value(), "Travel");
+        assert_eq!(f.start.value(), "2026-05-10");
+        assert_eq!(f.end.value(), "2026-05-12");
+        assert_eq!(f.busystatus(), MsBusyStatus::Oof);
+        assert_eq!(f.class(), Some(EventClass::Private));
+        assert_eq!(f.categories.value(), "work, travel");
+    }
+
+    #[test]
+    fn edit_form_single_day_leaves_end_blank() {
+        let mut event = make_event();
+        event.dtstart = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        event.dtend = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap(); // exclusive ⇒ 1 day
+        let f = EventForm::new_for_edit("h.ics", 7, &event);
+        assert_eq!(f.start.value(), "2026-01-01");
+        assert_eq!(f.end.value(), "");
+    }
+
+    #[test]
+    fn edit_submit_produces_submit_edit_with_patch() {
+        let event = make_event();
+        let mut f = EventForm::new_for_edit("h.ics", 3, &event);
+        // Change summary to "Trip" by clearing and retyping.
+        for _ in 0..6 {
+            f.handle(Intent::Backspace);
+        }
+        type_string(&mut f, "Trip");
+
+        match f.handle(Intent::SubmitForm) {
+            ScreenAction::SubmitEdit { event_index, patch } => {
+                assert_eq!(event_index, 3);
+                assert_eq!(patch.summary, Some("Trip".to_string()));
+                assert_eq!(
+                    patch.start,
+                    Some(NaiveDate::from_ymd_opt(2026, 5, 10).unwrap())
+                );
+                assert_eq!(
+                    patch.end,
+                    Some(NaiveDate::from_ymd_opt(2026, 5, 12).unwrap())
+                );
+                assert_eq!(patch.busystatus, Some(MsBusyStatus::Oof));
+                assert_eq!(patch.class, Some(EventClass::Private));
+                assert_eq!(
+                    patch.categories,
+                    Some(vec!["work".to_string(), "travel".to_string()])
+                );
+                assert!(!patch.clear_categories);
+                assert_eq!(patch.icon, None);
+                assert!(patch.clear_icon);
+            }
+            other => panic!("expected SubmitEdit, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn edit_with_emptied_categories_sets_clear_flag() {
+        let event = make_event();
+        let mut f = EventForm::new_for_edit("h.ics", 1, &event);
+        // Move focus to categories and clear it.
+        for _ in 0..CATEGORIES {
+            f.handle(Intent::NextField);
+        }
+        // categories preloaded with "work, travel" — backspace clears it
+        // one char at a time. 13 chars is enough for the longest expected
+        // preloaded value here.
+        for _ in 0..20 {
+            f.handle(Intent::Backspace);
+        }
+
+        match f.handle(Intent::SubmitForm) {
+            ScreenAction::SubmitEdit { patch, .. } => {
+                assert_eq!(patch.categories, None);
+                assert!(patch.clear_categories);
+            }
+            other => panic!("expected SubmitEdit, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn edit_with_invalid_start_records_error_and_stays() {
+        let event = make_event();
+        let mut f = EventForm::new_for_edit("h.ics", 1, &event);
+        f.handle(Intent::NextField); // focus → start
+        f.handle(Intent::Backspace);
+        f.handle(Intent::Backspace);
+        f.handle(Intent::Backspace);
+        f.handle(Intent::TypeChar('?'));
+        let action = f.handle(Intent::SubmitForm);
+        assert_eq!(action, ScreenAction::Continue);
+        assert!(f.error().is_some());
     }
 }

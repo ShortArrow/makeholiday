@@ -195,6 +195,14 @@ impl ListScreen {
                     ScreenAction::Continue
                 }
             }
+            // 'e' opens the Edit form on the selected event. Browse mode
+            // only; a no-op when no row is selected.
+            Intent::OpenEdit => match (&self.mode, self.state.selected()) {
+                (Mode::Browse, Some(idx)) => ScreenAction::OpenEdit {
+                    event_index: idx + 1,
+                },
+                _ => ScreenAction::Continue,
+            },
             // List view has a single column and no granularity — these
             // intents are meaningful in Grid / Timeline / forms only.
             Intent::NavLeft

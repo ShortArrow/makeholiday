@@ -6,12 +6,12 @@
 //! `main.rs::event_loop`) so each Screen variant stays focused on its
 //! own keybindings and render logic.
 
-pub mod add_form;
+pub mod event_form;
 pub mod grid;
 pub mod list;
 pub mod timeline;
 
-pub use add_form::AddForm;
+pub use event_form::{EventForm, FormMode};
 pub use grid::GridScreen;
 pub use list::ListScreen;
 pub use timeline::TimelineScreen;
@@ -61,14 +61,26 @@ pub enum ScreenAction {
     /// outside the screen.
     RemoveByIndices(Vec<usize>),
     /// Open the Add form. The Composition Root swaps the active screen
-    /// for `Screen::AddForm`, remembering which view to return to.
+    /// for `Screen::EventForm` (Add mode), remembering which view to
+    /// return to.
     OpenAdd,
-    /// Submit a validated Add request. AddForm produces this; the
-    /// Composition Root drives `icscli::application::use_cases::add` and
-    /// returns to the previously-active view on success.
+    /// Open the Edit form on the event at the given 1-based index. The
+    /// Composition Root pulls the event from the loaded list and seeds
+    /// `Screen::EventForm` (Edit mode) with its values.
+    OpenEdit { event_index: usize },
+    /// Submit a validated Add request. The Composition Root drives
+    /// `icscli::application::use_cases::add` and returns to the
+    /// previously-active view on success.
     SubmitAdd(AddRequest),
-    /// Dismiss the active modal (e.g. AddForm cancelled with Esc).
-    /// Composition Root returns to the previously-active view.
+    /// Submit a validated Edit request. The Composition Root drives
+    /// `icscli::application::use_cases::edit` with `event_index` (1-based)
+    /// and `patch`, then returns to the previously-active view.
+    SubmitEdit {
+        event_index: usize,
+        patch: icscli::application::use_cases::EditPatch,
+    },
+    /// Dismiss the active modal (form cancelled with Esc). Composition
+    /// Root returns to the previously-active view.
     DismissForm,
 }
 
@@ -95,7 +107,8 @@ pub enum Screen {
     List(ListScreen),
     Timeline(TimelineScreen),
     Grid(GridScreen),
-    AddForm(AddForm),
+    /// EventForm covers both Add and Edit modes — see [`FormMode`].
+    EventForm(EventForm),
 }
 
 impl Screen {
@@ -107,7 +120,7 @@ impl Screen {
             Screen::List(_) => Some(ViewKind::List),
             Screen::Timeline(_) => Some(ViewKind::Timeline),
             Screen::Grid(_) => Some(ViewKind::Grid),
-            Screen::AddForm(_) => None,
+            Screen::EventForm(_) => None,
         }
     }
 
@@ -116,7 +129,7 @@ impl Screen {
     /// reach the focused text field instead of triggering view-level
     /// shortcuts.
     pub fn is_modal(&self) -> bool {
-        matches!(self, Screen::AddForm(_))
+        matches!(self, Screen::EventForm(_))
     }
 
     pub fn handle(&mut self, intent: Intent) -> ScreenAction {
@@ -124,7 +137,7 @@ impl Screen {
             Screen::List(s) => s.handle(intent),
             Screen::Timeline(s) => s.handle(intent),
             Screen::Grid(s) => s.handle(intent),
-            Screen::AddForm(s) => s.handle(intent),
+            Screen::EventForm(s) => s.handle(intent),
         }
     }
 
@@ -133,7 +146,7 @@ impl Screen {
             Screen::List(s) => s.render(frame),
             Screen::Timeline(s) => s.render(frame),
             Screen::Grid(s) => s.render(frame),
-            Screen::AddForm(s) => s.render(frame),
+            Screen::EventForm(s) => s.render(frame),
         }
     }
 
@@ -143,7 +156,7 @@ impl Screen {
             Screen::List(s) => s.set_transient_status(msg),
             Screen::Timeline(s) => s.set_transient_status(msg),
             Screen::Grid(s) => s.set_transient_status(msg),
-            Screen::AddForm(s) => s.set_transient_status(msg),
+            Screen::EventForm(s) => s.set_transient_status(msg),
         }
     }
 
@@ -152,7 +165,7 @@ impl Screen {
             Screen::List(s) => s.file_label(),
             Screen::Timeline(s) => s.file_label(),
             Screen::Grid(s) => s.file_label(),
-            Screen::AddForm(s) => s.file_label(),
+            Screen::EventForm(s) => s.file_label(),
         }
     }
 }

@@ -157,6 +157,7 @@ impl GridScreen {
             // keeps the match exhaustive.
             Intent::OpenRemove
             | Intent::OpenAdd
+            | Intent::OpenEdit
             | Intent::ToggleMark
             | Intent::Confirm
             | Intent::CycleView

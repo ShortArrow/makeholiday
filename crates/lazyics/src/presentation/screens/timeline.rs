@@ -148,6 +148,7 @@ impl TimelineScreen {
             // mode) but listing them keeps the match exhaustive.
             Intent::OpenRemove
             | Intent::OpenAdd
+            | Intent::OpenEdit
             | Intent::ToggleMark
             | Intent::Confirm
             | Intent::NavLeft
