@@ -64,12 +64,21 @@ pub enum ScreenAction {
     RemoveByIndices(Vec<usize>),
     /// Open the Add form. The Composition Root swaps the active screen
     /// for `Screen::EventForm` (Add mode), remembering which view to
-    /// return to.
-    OpenAdd,
+    /// return to. `start_hint` pre-populates the Start field — Grid
+    /// sets it to the cursor date so `a` on a calendar cell creates an
+    /// event on that day. List and Timeline pass `None`.
+    OpenAdd {
+        start_hint: Option<chrono::NaiveDate>,
+    },
     /// Open the Edit form on the event at the given 1-based index. The
     /// Composition Root pulls the event from the loaded list and seeds
     /// `Screen::EventForm` (Edit mode) with its values.
     OpenEdit { event_index: usize },
+    /// Like `OpenEdit` but the screen doesn't know the canonical
+    /// 1-based index — only the event's stable UID. Timeline emits this
+    /// because it carries an internally-sorted event list; the
+    /// Composition Root resolves the UID against the on-disk events.
+    OpenEditByUid { uid: String },
     /// Submit a validated Add request. The Composition Root drives
     /// `icscli::application::use_cases::add` and returns to the
     /// previously-active view on success.

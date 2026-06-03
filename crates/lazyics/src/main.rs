@@ -125,11 +125,32 @@ fn event_loop(
                 ScreenAction::RemoveByIndices(indices) => {
                     apply_remove(repo, screen, file_label, &indices)?;
                 }
-                ScreenAction::OpenAdd => {
+                ScreenAction::OpenAdd { start_hint } => {
                     if let Some(kind) = screen.kind() {
                         previous_view = kind;
                     }
-                    *screen = Screen::EventForm(EventForm::new_for_add(file_label.to_string()));
+                    *screen = Screen::EventForm(EventForm::new_for_add_with_start(
+                        file_label.to_string(),
+                        start_hint,
+                    ));
+                }
+                ScreenAction::OpenEditByUid { uid } => {
+                    if let Some(kind) = screen.kind() {
+                        previous_view = kind;
+                    }
+                    let events = repo.load()?.events;
+                    match events.iter().position(|e| e.uid == uid) {
+                        Some(pos) => {
+                            *screen = Screen::EventForm(EventForm::new_for_edit(
+                                file_label.to_string(),
+                                pos + 1,
+                                &events[pos],
+                            ));
+                        }
+                        None => {
+                            tracing::warn!(%uid, "OpenEditByUid: event no longer present");
+                        }
+                    }
                 }
                 ScreenAction::OpenEdit { event_index } => {
                     if let Some(kind) = screen.kind() {
@@ -413,12 +434,17 @@ Quit / dismiss (scope is precise — `?` inside the TUI shows the full spec):
   g | Home            First event / first of period
   G | End             Last event / last of period
 
-List view:
-  a                   Open Add form
-  e                   Open Edit form on the selected event
-  d | x               Enter multi-select Remove mode
+CRUD (where each affordance applies):
+  a (List)            Open Add form (blank)
+  a (Timeline)        Open Add form (blank)
+  a (Grid)            Open Add form with Start pre-filled to cursor date
+  e (List)            Edit selected event
+  e (Timeline)        Edit selected event
+  e (Grid)            Edit first event on cursor date (no-op if none)
+  d | x (List only)   Enter multi-select Remove mode
   Space               Toggle mark on highlighted row (Remove mode)
   Enter | Shift+D     Confirm removal of marked events
+  / (List only)       Open search-as-you-type filter
 
 Event form (Add / Edit):
   Tab | Shift+Tab     Next / previous field

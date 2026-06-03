@@ -147,9 +147,14 @@ impl TimelineScreen {
                 ScreenAction::Continue
             }
             Intent::OpenHelp => ScreenAction::OpenHelp,
+            Intent::OpenAdd => ScreenAction::OpenAdd { start_hint: None },
+            Intent::OpenEdit => match self.selected_event_uid() {
+                Some(uid) => ScreenAction::OpenEditByUid {
+                    uid: uid.to_string(),
+                },
+                None => ScreenAction::Continue,
+            },
             Intent::OpenRemove
-            | Intent::OpenAdd
-            | Intent::OpenEdit
             | Intent::OpenSearch
             | Intent::ToggleMark
             | Intent::Confirm
@@ -162,6 +167,18 @@ impl TimelineScreen {
             | Intent::NextField
             | Intent::PrevField
             | Intent::SubmitForm => ScreenAction::Continue,
+        }
+    }
+
+    /// UID of the currently-selected event, or `None` if the timeline
+    /// is empty. Used by Timeline to emit `OpenEditByUid` without
+    /// needing to know the canonical 1-based index.
+    fn selected_event_uid(&self) -> Option<&str> {
+        let idx = self.selected_event?;
+        let row_idx = *self.event_row_indices.get(idx)?;
+        match self.rows.get(row_idx)? {
+            Row::Event { uid, .. } => Some(uid.as_str()),
+            Row::Header(_) => None,
         }
     }
 
@@ -435,6 +452,31 @@ mod tests {
         assert_eq!(s.handle(Intent::Confirm), ScreenAction::Continue);
         assert_eq!(s.handle(Intent::NavLeft), ScreenAction::Continue);
         assert_eq!(s.handle(Intent::NavRight), ScreenAction::Continue);
+    }
+
+    #[test]
+    fn open_add_emits_blank_add_action() {
+        let mut s = TimelineScreen::from_events(&three_events_in_three_months(), "h.ics");
+        assert_eq!(
+            s.handle(Intent::OpenAdd),
+            ScreenAction::OpenAdd { start_hint: None }
+        );
+    }
+
+    #[test]
+    fn open_edit_emits_open_edit_by_uid_of_selected_event() {
+        let mut s = TimelineScreen::from_events(&three_events_in_three_months(), "h.ics");
+        s.handle(Intent::NavDown); // index 1 → "建国"
+        match s.handle(Intent::OpenEdit) {
+            ScreenAction::OpenEditByUid { uid } => assert_eq!(uid, "uid-建国"),
+            other => panic!("expected OpenEditByUid, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_edit_with_no_events_is_noop() {
+        let mut s = TimelineScreen::from_events(&[], "h.ics");
+        assert_eq!(s.handle(Intent::OpenEdit), ScreenAction::Continue);
     }
 
     #[test]

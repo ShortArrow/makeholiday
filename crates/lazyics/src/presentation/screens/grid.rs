@@ -159,9 +159,23 @@ impl GridScreen {
                 ScreenAction::Continue
             }
             Intent::OpenHelp => ScreenAction::OpenHelp,
+            Intent::OpenAdd => ScreenAction::OpenAdd {
+                start_hint: Some(self.cursor),
+            },
+            Intent::OpenEdit => match self.events_by_date.get(&self.cursor) {
+                // 1-based index into the calendar's original event list.
+                Some(idxs) if !idxs.is_empty() => ScreenAction::OpenEdit {
+                    event_index: idxs[0] + 1,
+                },
+                _ => {
+                    self.transient_status = Some(format!(
+                        "No event on {} to edit",
+                        self.cursor.format("%Y-%m-%d")
+                    ));
+                    ScreenAction::Continue
+                }
+            },
             Intent::OpenRemove
-            | Intent::OpenAdd
-            | Intent::OpenEdit
             | Intent::OpenSearch
             | Intent::ToggleMark
             | Intent::Confirm
@@ -591,5 +605,34 @@ mod tests {
         assert_eq!(s.handle(Intent::OpenRemove), ScreenAction::Continue);
         assert_eq!(s.handle(Intent::ToggleMark), ScreenAction::Continue);
         assert_eq!(s.handle(Intent::Confirm), ScreenAction::Continue);
+    }
+
+    #[test]
+    fn open_add_pre_fills_start_with_cursor_date() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        assert_eq!(
+            s.handle(Intent::OpenAdd),
+            ScreenAction::OpenAdd {
+                start_hint: Some(day(2026, 5, 15)),
+            }
+        );
+    }
+
+    #[test]
+    fn open_edit_on_cursor_with_event_emits_open_edit() {
+        let events = vec![make_event((2026, 5, 15), (2026, 5, 16), "a")];
+        let mut s = GridScreen::from_events_with_today(&events, "h.ics", day(2026, 5, 15));
+        match s.handle(Intent::OpenEdit) {
+            // The single event is at index 0 → 1-based 1.
+            ScreenAction::OpenEdit { event_index } => assert_eq!(event_index, 1),
+            other => panic!("expected OpenEdit, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_edit_on_cursor_without_event_is_noop_with_status() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        assert_eq!(s.handle(Intent::OpenEdit), ScreenAction::Continue);
+        assert!(s.transient_status.as_ref().unwrap().contains("No event"));
     }
 }

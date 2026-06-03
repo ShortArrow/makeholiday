@@ -99,16 +99,32 @@ pub struct EventForm {
 impl EventForm {
     /// Blank form, ready to add a new event.
     pub fn new_for_add(file_label: impl Into<String>) -> Self {
+        Self::new_for_add_with_start(file_label, None)
+    }
+
+    /// Add-mode form with an optional pre-filled Start date. Grid uses
+    /// this when the user presses `a` on a specific calendar cell.
+    pub fn new_for_add_with_start(
+        file_label: impl Into<String>,
+        start_hint: Option<chrono::NaiveDate>,
+    ) -> Self {
+        let start = match start_hint {
+            Some(d) => TextInput::with_value(d.format("%Y-%m-%d").to_string()),
+            None => TextInput::new(),
+        };
+        // When the user comes in with a pre-filled Start, jump focus
+        // straight to Summary (the field they still need to fill).
+        let focus = SUMMARY;
         Self {
             mode: FormMode::Add,
             summary: TextInput::new(),
-            start: TextInput::new(),
+            start,
             end: TextInput::new(),
             busystatus: MsBusyStatus::Free,
             class: None,
             categories: TextInput::new(),
             icon: TextInput::new(),
-            focus: SUMMARY,
+            focus,
             error: None,
             file_label: file_label.into(),
             transient_status: None,

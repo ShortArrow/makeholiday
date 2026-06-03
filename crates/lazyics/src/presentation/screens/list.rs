@@ -319,7 +319,7 @@ impl ListScreen {
             Intent::OpenAdd => match self.mode {
                 // Browse mode opens the form; Remove mode swallows `a`
                 // so the user doesn't lose marks via a misfire.
-                Mode::Browse => ScreenAction::OpenAdd,
+                Mode::Browse => ScreenAction::OpenAdd { start_hint: None },
                 Mode::Remove { .. } => ScreenAction::Continue,
                 Mode::Search { .. } => unreachable!(),
             },
