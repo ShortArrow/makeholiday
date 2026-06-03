@@ -247,6 +247,7 @@ impl EventForm {
             | Intent::OpenRemove
             | Intent::OpenAdd
             | Intent::OpenEdit
+            | Intent::OpenHelp
             | Intent::ToggleMark
             | Intent::Confirm => ScreenAction::Continue,
         }

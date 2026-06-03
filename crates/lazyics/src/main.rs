@@ -24,7 +24,8 @@ use lazyics::error::{LazyicsError, Result};
 use lazyics::infrastructure::terminal::TerminalGuard;
 use lazyics::presentation::keymap::{self, Intent, KeymapMode};
 use lazyics::presentation::screens::{
-    AddRequest, EventForm, GridScreen, ListScreen, Screen, ScreenAction, TimelineScreen, ViewKind,
+    AddRequest, EventForm, GridScreen, HelpScreen, ListScreen, Screen, ScreenAction,
+    TimelineScreen, ViewKind,
 };
 
 const DEFAULT_FILE: &str = "calendar.ics";
@@ -104,10 +105,10 @@ fn event_loop(
             };
 
             // View-switching intents are intercepted at the Composition
-            // Root (Browse mode only). In Form mode the keymap never
-            // emits CycleView/SwitchView in the first place, so the
-            // is_modal guard is belt-and-suspenders.
-            if !screen.is_modal() {
+            // Root, but only when the active screen *is* a view. While a
+            // modal (form) or overlay (help) is up, Tab / 1 / 2 / 3 stay
+            // inert so the user doesn't lose context underneath.
+            if screen.kind().is_some() {
                 match intent {
                     Intent::CycleView => {
                         if let Some(current) = screen.kind() {
@@ -162,6 +163,15 @@ fn event_loop(
                     apply_edit(repo, screen, file_label, previous_view, event_index, patch)?;
                 }
                 ScreenAction::DismissForm => {
+                    switch_view(repo, screen, previous_view, file_label)?;
+                }
+                ScreenAction::OpenHelp => {
+                    if let Some(kind) = screen.kind() {
+                        previous_view = kind;
+                    }
+                    *screen = Screen::Help(HelpScreen::new(file_label.to_string()));
+                }
+                ScreenAction::DismissHelp => {
                     switch_view(repo, screen, previous_view, file_label)?;
                 }
             }
@@ -394,7 +404,8 @@ Views:
 
 Common keys:
   q | Ctrl+C          Quit
-  Esc                 Cancel modal state / Quit at top level
+  ?                   Open / close in-app help overlay
+  Esc                 Cancel modal state / close help / Quit at top level
   j | Down            Down / next row / next week (Grid)
   k | Up              Up / previous row / previous week (Grid)
   h | Left            Previous day (Grid)

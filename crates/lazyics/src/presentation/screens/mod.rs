@@ -8,11 +8,13 @@
 
 pub mod event_form;
 pub mod grid;
+pub mod help;
 pub mod list;
 pub mod timeline;
 
 pub use event_form::{EventForm, FormMode};
 pub use grid::GridScreen;
+pub use help::HelpScreen;
 pub use list::ListScreen;
 pub use timeline::TimelineScreen;
 
@@ -82,6 +84,13 @@ pub enum ScreenAction {
     /// Dismiss the active modal (form cancelled with Esc). Composition
     /// Root returns to the previously-active view.
     DismissForm,
+    /// Open the in-app help overlay. Composition Root replaces the
+    /// active screen with `Screen::Help`, remembering which view to
+    /// return to.
+    OpenHelp,
+    /// Dismiss the help overlay. Composition Root returns to the
+    /// previously-active view.
+    DismissHelp,
 }
 
 /// Validated Add request handed from `AddForm` to the Composition Root.
@@ -109,25 +118,27 @@ pub enum Screen {
     Grid(GridScreen),
     /// EventForm covers both Add and Edit modes — see [`FormMode`].
     EventForm(EventForm),
+    /// In-app help overlay. Uses Browse keymap (no text input), but is
+    /// non-view so view-switching shortcuts get inert while open.
+    Help(HelpScreen),
 }
 
 impl Screen {
-    /// `Some(_)` for top-level views, `None` for modal surfaces (forms).
-    /// Composition Root uses this to remember which view to return to
-    /// after a modal dismisses.
+    /// `Some(_)` for top-level views, `None` for modal / overlay
+    /// surfaces. Composition Root uses this to gate view-switching
+    /// intents and to remember which view to return to after a modal
+    /// dismisses.
     pub fn kind(&self) -> Option<ViewKind> {
         match self {
             Screen::List(_) => Some(ViewKind::List),
             Screen::Timeline(_) => Some(ViewKind::Timeline),
             Screen::Grid(_) => Some(ViewKind::Grid),
-            Screen::EventForm(_) => None,
+            Screen::EventForm(_) | Screen::Help(_) => None,
         }
     }
 
-    /// True for modal surfaces (forms / confirmations). The keymap is
-    /// switched to `KeymapMode::Form` for these so printable characters
-    /// reach the focused text field instead of triggering view-level
-    /// shortcuts.
+    /// True for surfaces that take text input (`KeymapMode::Form`).
+    /// Help is non-view but uses Browse keymap, so it returns `false`.
     pub fn is_modal(&self) -> bool {
         matches!(self, Screen::EventForm(_))
     }
@@ -138,6 +149,7 @@ impl Screen {
             Screen::Timeline(s) => s.handle(intent),
             Screen::Grid(s) => s.handle(intent),
             Screen::EventForm(s) => s.handle(intent),
+            Screen::Help(s) => s.handle(intent),
         }
     }
 
@@ -147,6 +159,7 @@ impl Screen {
             Screen::Timeline(s) => s.render(frame),
             Screen::Grid(s) => s.render(frame),
             Screen::EventForm(s) => s.render(frame),
+            Screen::Help(s) => s.render(frame),
         }
     }
 
@@ -157,6 +170,7 @@ impl Screen {
             Screen::Timeline(s) => s.set_transient_status(msg),
             Screen::Grid(s) => s.set_transient_status(msg),
             Screen::EventForm(s) => s.set_transient_status(msg),
+            Screen::Help(s) => s.set_transient_status(msg),
         }
     }
 
@@ -166,6 +180,7 @@ impl Screen {
             Screen::Timeline(s) => s.file_label(),
             Screen::Grid(s) => s.file_label(),
             Screen::EventForm(s) => s.file_label(),
+            Screen::Help(s) => s.file_label(),
         }
     }
 }

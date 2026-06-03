@@ -58,6 +58,9 @@ pub enum Intent {
     /// Open the Edit form on the currently-selected event
     /// (List view, Browse).
     OpenEdit,
+    /// Open / toggle the in-app help overlay. Sent by `?` in Browse mode;
+    /// in the help overlay the same key re-emits and closes it.
+    OpenHelp,
     /// Toggle the mark on the currently-selected row (List Remove mode).
     ToggleMark,
     /// Confirm the current modal action — in List Remove mode, submit
@@ -131,6 +134,10 @@ fn map_browse(event: KeyEvent) -> Option<Intent> {
 
         // Edit form entry (Phase 3c).
         (KeyCode::Char('e'), KeyModifiers::NONE) => Some(Intent::OpenEdit),
+
+        // In-app help overlay. `?` is Shift+/ on most layouts, so this
+        // arrives as Char('?') with the Shift modifier set.
+        (KeyCode::Char('?'), _) => Some(Intent::OpenHelp),
 
         // Remove-mode entry: ADR-025 §"Initial scope" binds d and x.
         (KeyCode::Char('d'), KeyModifiers::NONE) => Some(Intent::OpenRemove),
@@ -310,6 +317,26 @@ mod tests {
         assert_eq!(
             map(press(KeyCode::Up, KeyModifiers::NONE), KeymapMode::Form),
             Some(Intent::PrevField)
+        );
+    }
+
+    #[test]
+    fn question_mark_opens_help_in_browse_types_in_form() {
+        assert_eq!(
+            map(
+                press(KeyCode::Char('?'), KeyModifiers::SHIFT),
+                KeymapMode::Browse
+            ),
+            Some(Intent::OpenHelp)
+        );
+        // In Form mode '?' is just a typed character (the modifier is
+        // present but not Control, so map_form takes the TypeChar branch).
+        assert_eq!(
+            map(
+                press(KeyCode::Char('?'), KeyModifiers::SHIFT),
+                KeymapMode::Form
+            ),
+            Some(Intent::TypeChar('?'))
         );
     }
 

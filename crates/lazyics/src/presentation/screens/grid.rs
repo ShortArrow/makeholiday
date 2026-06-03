@@ -151,6 +151,7 @@ impl GridScreen {
                 self.granularity = self.granularity.cycle();
                 ScreenAction::Continue
             }
+            Intent::OpenHelp => ScreenAction::OpenHelp,
             // Phase 4a: Remove / Add / mark / confirm belong to List view
             // only. Form-mode intents are unreachable here (Grid is never
             // the active screen in Form keymap mode) but listing them

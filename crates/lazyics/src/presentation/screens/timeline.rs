@@ -141,6 +141,7 @@ impl TimelineScreen {
                 self.set_granularity(self.granularity.cycle());
                 ScreenAction::Continue
             }
+            Intent::OpenHelp => ScreenAction::OpenHelp,
             // Phase 4a: Remove / Add / Edit live in the List view; here
             // they are no-ops so users get predictable cross-view keymap
             // muscle memory. Form-mode intents are likewise unreachable

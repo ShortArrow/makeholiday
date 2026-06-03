@@ -203,6 +203,8 @@ impl ListScreen {
                 },
                 _ => ScreenAction::Continue,
             },
+            // '?' opens the help overlay regardless of mode.
+            Intent::OpenHelp => ScreenAction::OpenHelp,
             // List view has a single column and no granularity — these
             // intents are meaningful in Grid / Timeline / forms only.
             Intent::NavLeft
