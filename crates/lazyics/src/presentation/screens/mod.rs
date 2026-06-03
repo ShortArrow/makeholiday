@@ -138,9 +138,14 @@ impl Screen {
     }
 
     /// True for surfaces that take text input (`KeymapMode::Form`).
-    /// Help is non-view but uses Browse keymap, so it returns `false`.
+    /// Help uses Browse keymap. List is normally Browse but flips to
+    /// Form-style while the user is in Search input mode.
     pub fn is_modal(&self) -> bool {
-        matches!(self, Screen::EventForm(_))
+        match self {
+            Screen::EventForm(_) => true,
+            Screen::List(s) => s.is_search_mode(),
+            _ => false,
+        }
     }
 
     pub fn handle(&mut self, intent: Intent) -> ScreenAction {

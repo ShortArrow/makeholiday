@@ -403,6 +403,8 @@ Quit / dismiss (scope is precise — `?` inside the TUI shows the full spec):
   Esc (in help)       Close help
   Esc (in a form)     Cancel form (discard changes)
   Esc (in Remove)     Exit Remove mode (discard marks)
+  Esc (in Search)     Cancel search; restore previous filter
+  /                   Open search-as-you-type filter (List view)
   ?                   Open / close in-app help overlay
   j | Down            Down / next row / next week (Grid)
   k | Up              Up / previous row / previous week (Grid)

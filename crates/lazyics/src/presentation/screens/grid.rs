@@ -156,6 +156,7 @@ impl GridScreen {
             Intent::OpenRemove
             | Intent::OpenAdd
             | Intent::OpenEdit
+            | Intent::OpenSearch
             | Intent::ToggleMark
             | Intent::Confirm
             | Intent::CycleView

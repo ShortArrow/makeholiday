@@ -53,6 +53,7 @@ impl HelpScreen {
             | Intent::OpenRemove
             | Intent::OpenAdd
             | Intent::OpenEdit
+            | Intent::OpenSearch
             | Intent::ToggleMark
             | Intent::Confirm
             | Intent::TypeChar(_)
@@ -116,6 +117,7 @@ fn help_lines() -> Vec<Line<'static>> {
         binding("Esc (in help)", "Close help"),
         binding("Esc (in a form)", "Cancel form (discard changes)"),
         binding("Esc (in Remove mode)", "Exit Remove mode (discard marks)"),
+        binding("Esc (in Search)", "Cancel search (restore previous filter)"),
         blank(),
         header("Always available"),
         binding("?", "Open / close this help"),
@@ -142,6 +144,14 @@ fn help_lines() -> Vec<Line<'static>> {
             "Enter | Shift+D (in Remove)",
             "Confirm removal of marked events",
         ),
+        binding("/", "Open search-as-you-type filter"),
+        blank(),
+        header("Search (List view)"),
+        binding("Any printable key", "Append to filter (live-updates list)"),
+        binding("Backspace", "Delete last filter character"),
+        binding("Left | Right | Home | End", "Cursor within filter input"),
+        binding("Enter", "Commit filter and return to Browse mode"),
+        binding("Esc", "Cancel search; restore previous filter"),
         blank(),
         header("Add / Edit form"),
         binding("Tab | Shift+Tab", "Next / previous field"),

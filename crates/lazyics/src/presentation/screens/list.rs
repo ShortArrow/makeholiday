@@ -20,11 +20,23 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 use crate::error::Result;
 use crate::presentation::keymap::Intent;
 use crate::presentation::screens::ScreenAction;
+use crate::presentation::widgets::TextInput;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 enum Mode {
     Browse,
-    Remove { marked: BTreeSet<usize> },
+    Remove {
+        /// 0-based indices into the *original* `items` vec — stable
+        /// across filter changes.
+        marked: BTreeSet<usize>,
+    },
+    /// Search-as-you-type input. `draft` is the in-progress filter;
+    /// `previous_filter` is the committed filter at the moment Search
+    /// opened, restored on Cancel.
+    Search {
+        draft: TextInput,
+        previous_filter: Option<String>,
+    },
 }
 
 pub struct ListScreen {
@@ -32,8 +44,10 @@ pub struct ListScreen {
     state: ListState,
     file_label: String,
     mode: Mode,
-    /// A one-shot message (e.g. "Removed 3 event(s).") rendered on the
-    /// status bar until the next user interaction clears it.
+    /// Committed filter (None = no filter). Lowercased substring match
+    /// against `items` lines. Persists across Browse / Remove modes;
+    /// modified by entering and committing Search mode.
+    filter: Option<String>,
     transient_status: Option<String>,
 }
 
@@ -78,6 +92,7 @@ impl ListScreen {
             state,
             file_label,
             mode: Mode::Browse,
+            filter: None,
             transient_status: None,
         }
     }
@@ -86,8 +101,47 @@ impl ListScreen {
         self.items.len()
     }
 
+    /// Currently-selected position **within the filtered list** (not the
+    /// raw `items` index). Use `selected_event_index()` for the 1-based
+    /// original-domain index that the use cases expect.
     pub fn selected(&self) -> Option<usize> {
         self.state.selected()
+    }
+
+    /// Committed filter (lowercased substring), or `None` if no filter.
+    pub fn filter(&self) -> Option<&str> {
+        self.filter.as_deref()
+    }
+
+    /// 0-based indices into `items` that pass the active filter (the
+    /// live `draft` while in Search mode, or the committed `filter`
+    /// otherwise). With no filter, returns every index.
+    fn filtered_indices(&self) -> Vec<usize> {
+        let needle: String = match &self.mode {
+            Mode::Search { draft, .. } => draft.value().to_lowercase(),
+            _ => match &self.filter {
+                Some(f) => f.clone(),
+                None => return (0..self.items.len()).collect(),
+            },
+        };
+        if needle.is_empty() {
+            return (0..self.items.len()).collect();
+        }
+        self.items
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.to_lowercase().contains(&needle))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// 1-based original index of the currently-selected event, ready
+    /// for `icscli::application::use_cases::{edit,remove}`. `None` if
+    /// the filtered list is empty.
+    fn selected_original_index(&self) -> Option<usize> {
+        let filtered = self.filtered_indices();
+        let sel = self.state.selected()?;
+        filtered.get(sel).copied()
     }
 
     /// The path-as-displayed (passed in at construction). Composition Root
@@ -102,13 +156,13 @@ impl ListScreen {
         self.transient_status = Some(msg.into());
     }
 
-    /// Marked 0-based indices in Remove mode. Empty in Browse mode.
+    /// Marked 0-based original indices. Empty outside Remove mode.
     /// Exposed for unit tests.
     #[cfg(test)]
     fn marked(&self) -> Vec<usize> {
         match &self.mode {
-            Mode::Browse => Vec::new(),
             Mode::Remove { marked } => marked.iter().copied().collect(),
+            _ => Vec::new(),
         }
     }
 
@@ -118,12 +172,92 @@ impl ListScreen {
         matches!(self.mode, Mode::Remove { .. })
     }
 
-    pub fn handle(&mut self, intent: Intent) -> ScreenAction {
-        // Composition Root re-sets `transient_status` after `handle`
-        // returns if it has a fresh message — so blanket-clearing here
-        // is safe.
-        self.transient_status = None;
+    /// Whether the screen is currently in Search input mode. The Screen
+    /// enum forwards this to `is_modal()` so the Composition Root knows
+    /// to switch the keymap into Form mode (typed chars → TypeChar).
+    pub fn is_search_mode(&self) -> bool {
+        matches!(self.mode, Mode::Search { .. })
+    }
 
+    pub fn handle(&mut self, intent: Intent) -> ScreenAction {
+        self.transient_status = None;
+        if matches!(self.mode, Mode::Search { .. }) {
+            return self.handle_search(intent);
+        }
+        self.handle_browse_or_remove(intent)
+    }
+
+    fn handle_search(&mut self, intent: Intent) -> ScreenAction {
+        match intent {
+            Intent::ForceQuit => ScreenAction::Quit,
+            Intent::Cancel => {
+                if let Mode::Search {
+                    previous_filter, ..
+                } = &self.mode
+                {
+                    self.filter = previous_filter.clone();
+                }
+                self.mode = Mode::Browse;
+                self.clamp_selection();
+                ScreenAction::Continue
+            }
+            Intent::SubmitForm => {
+                if let Mode::Search { draft, .. } = &self.mode {
+                    let v = draft.value().trim().to_lowercase();
+                    self.filter = if v.is_empty() { None } else { Some(v) };
+                }
+                self.mode = Mode::Browse;
+                self.clamp_selection();
+                ScreenAction::Continue
+            }
+            Intent::TypeChar(c) => {
+                if let Mode::Search { draft, .. } = &mut self.mode {
+                    draft.insert_char(c);
+                }
+                self.clamp_selection();
+                ScreenAction::Continue
+            }
+            Intent::Backspace => {
+                if let Mode::Search { draft, .. } = &mut self.mode {
+                    draft.backspace();
+                }
+                self.clamp_selection();
+                ScreenAction::Continue
+            }
+            Intent::NavLeft => {
+                if let Mode::Search { draft, .. } = &mut self.mode {
+                    draft.move_left();
+                }
+                ScreenAction::Continue
+            }
+            Intent::NavRight => {
+                if let Mode::Search { draft, .. } = &mut self.mode {
+                    draft.move_right();
+                }
+                ScreenAction::Continue
+            }
+            Intent::NavTop => {
+                if let Mode::Search { draft, .. } = &mut self.mode {
+                    draft.move_home();
+                }
+                ScreenAction::Continue
+            }
+            Intent::NavBottom => {
+                if let Mode::Search { draft, .. } = &mut self.mode {
+                    draft.move_end();
+                }
+                ScreenAction::Continue
+            }
+            Intent::OpenHelp => ScreenAction::OpenHelp,
+            // Everything else (Quit, NavUp/Down, NextField/PrevField,
+            // OpenAdd/Edit/Remove/Search, CycleView, etc.) is a no-op
+            // while typing the filter — the user is committing or
+            // cancelling, not navigating views.
+            _ => ScreenAction::Continue,
+        }
+    }
+
+    fn handle_browse_or_remove(&mut self, intent: Intent) -> ScreenAction {
         match intent {
             Intent::Quit | Intent::ForceQuit => ScreenAction::Quit,
             Intent::Cancel => match self.mode {
@@ -132,6 +266,7 @@ impl ListScreen {
                     self.mode = Mode::Browse;
                     ScreenAction::Continue
                 }
+                Mode::Search { .. } => unreachable!("handled by handle_search"),
             },
             Intent::NavDown => {
                 self.move_cursor(1);
@@ -142,19 +277,21 @@ impl ListScreen {
                 ScreenAction::Continue
             }
             Intent::NavTop => {
-                if !self.items.is_empty() {
+                let count = self.filtered_indices().len();
+                if count > 0 {
                     self.state.select(Some(0));
                 }
                 ScreenAction::Continue
             }
             Intent::NavBottom => {
-                if !self.items.is_empty() {
-                    self.state.select(Some(self.items.len() - 1));
+                let count = self.filtered_indices().len();
+                if count > 0 {
+                    self.state.select(Some(count - 1));
                 }
                 ScreenAction::Continue
             }
             Intent::OpenRemove => {
-                if !self.items.is_empty() && matches!(self.mode, Mode::Browse) {
+                if !self.filtered_indices().is_empty() && matches!(self.mode, Mode::Browse) {
                     self.mode = Mode::Remove {
                         marked: BTreeSet::new(),
                     };
@@ -162,18 +299,18 @@ impl ListScreen {
                 ScreenAction::Continue
             }
             Intent::ToggleMark => {
+                let Some(original) = self.selected_original_index() else {
+                    return ScreenAction::Continue;
+                };
                 if let Mode::Remove { marked } = &mut self.mode {
-                    if let Some(idx) = self.state.selected() {
-                        if !marked.insert(idx) {
-                            marked.remove(&idx);
-                        }
+                    if !marked.insert(original) {
+                        marked.remove(&original);
                     }
                 }
                 ScreenAction::Continue
             }
             Intent::Confirm => match &self.mode {
                 Mode::Remove { marked } if !marked.is_empty() => {
-                    // 0-based marks → 1-based for `icscli`'s index spec.
                     let indices: Vec<usize> = marked.iter().map(|i| i + 1).collect();
                     ScreenAction::RemoveByIndices(indices)
                 }
@@ -184,11 +321,28 @@ impl ListScreen {
                 // so the user doesn't lose marks via a misfire.
                 Mode::Browse => ScreenAction::OpenAdd,
                 Mode::Remove { .. } => ScreenAction::Continue,
+                Mode::Search { .. } => unreachable!(),
             },
-            Intent::OpenEdit => match (&self.mode, self.state.selected()) {
-                (Mode::Browse, Some(idx)) => ScreenAction::OpenEdit {
-                    event_index: idx + 1,
+            Intent::OpenEdit => match self.mode {
+                Mode::Browse => match self.selected_original_index() {
+                    Some(original) => ScreenAction::OpenEdit {
+                        event_index: original + 1,
+                    },
+                    None => ScreenAction::Continue,
                 },
+                _ => ScreenAction::Continue,
+            },
+            Intent::OpenSearch => match self.mode {
+                Mode::Browse => {
+                    let initial = self.filter.clone().unwrap_or_default();
+                    self.mode = Mode::Search {
+                        draft: TextInput::with_value(initial),
+                        previous_filter: self.filter.clone(),
+                    };
+                    ScreenAction::Continue
+                }
+                // Remove mode swallows `/` so the user doesn't lose
+                // marks via a misfire. They can Esc out first.
                 _ => ScreenAction::Continue,
             },
             Intent::OpenHelp => ScreenAction::OpenHelp,
@@ -206,47 +360,100 @@ impl ListScreen {
     }
 
     fn move_cursor(&mut self, delta: i32) {
-        if self.items.is_empty() {
+        let count = self.filtered_indices().len();
+        if count == 0 {
+            self.state.select(None);
             return;
         }
-        let last = self.items.len() - 1;
+        let last = (count - 1) as i32;
         let current = self.state.selected().unwrap_or(0) as i32;
-        let next = (current + delta).clamp(0, last as i32) as usize;
+        let next = (current + delta).clamp(0, last) as usize;
         self.state.select(Some(next));
     }
 
-    /// Render the screen into `frame`.
+    /// After a filter change, the previous selected position may be out
+    /// of range. Clamp to last valid filtered index, or drop selection
+    /// entirely when the filter has no matches.
+    fn clamp_selection(&mut self) {
+        let count = self.filtered_indices().len();
+        if count == 0 {
+            self.state.select(None);
+        } else {
+            let sel = self.state.selected().unwrap_or(0).min(count - 1);
+            self.state.select(Some(sel));
+        }
+    }
+
     pub fn render(&mut self, frame: &mut Frame) {
-        let layout = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]);
-        let [list_area, status_area] = layout.areas(frame.area());
+        // Search mode reserves the top row for the filter input. Browse
+        // and Remove use the whole pane for the list.
+        let in_search = matches!(self.mode, Mode::Search { .. });
+        let layout = if in_search {
+            Layout::vertical([
+                Constraint::Length(3),
+                Constraint::Min(1),
+                Constraint::Length(1),
+            ])
+        } else {
+            Layout::vertical([
+                Constraint::Length(0),
+                Constraint::Min(1),
+                Constraint::Length(1),
+            ])
+        };
+        let [search_area, list_area, status_area] = layout.areas(frame.area());
+
+        if let Mode::Search { draft, .. } = &self.mode {
+            let block = Block::default()
+                .title("Search (substring, case-insensitive)")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Yellow));
+            let inner = block.inner(search_area);
+            frame.render_widget(block, search_area);
+            draft.render(frame, inner, true);
+        }
+
+        let filtered = self.filtered_indices();
+        let total = self.items.len();
+        let visible = filtered.len();
 
         let title = match &self.mode {
-            Mode::Browse => "lazyics — events".to_string(),
+            Mode::Browse => {
+                if self.filter.is_some() {
+                    format!("lazyics — events  ({visible} of {total})")
+                } else {
+                    "lazyics — events".to_string()
+                }
+            }
             Mode::Remove { marked } => format!("lazyics — REMOVE ({} marked)", marked.len()),
+            Mode::Search { .. } => format!("lazyics — events  (live: {visible} of {total})"),
         };
         let block = Block::default().title(title).borders(Borders::ALL);
 
-        if self.items.is_empty() {
+        if filtered.is_empty() {
             let inner = block.inner(list_area);
             frame.render_widget(block, list_area);
-            let hint = Paragraph::new(
-                "No events.\n\nUse `icscli add --summary ... --start ...` to create one.",
-            )
-            .alignment(Alignment::Center);
-            frame.render_widget(hint, inner);
+            let hint = if total == 0 {
+                "No events.\n\nUse `icscli add --summary ... --start ...` to create one."
+                    .to_string()
+            } else {
+                format!("No events match the filter ({total} total — Esc to clear).")
+            };
+            frame.render_widget(Paragraph::new(hint).alignment(Alignment::Center), inner);
         } else {
             let marked: BTreeSet<usize> = match &self.mode {
                 Mode::Remove { marked } => marked.clone(),
-                Mode::Browse => BTreeSet::new(),
+                _ => BTreeSet::new(),
             };
-            let list_items: Vec<ListItem> = self
-                .items
+            let in_remove = self.is_remove_mode();
+            let list_items: Vec<ListItem> = filtered
                 .iter()
-                .enumerate()
-                .map(|(i, text)| {
-                    if self.is_remove_mode() {
-                        let prefix = if marked.contains(&i) { "[x] " } else { "[ ] " };
-                        let style = if marked.contains(&i) {
+                .map(|&original_idx| {
+                    let text = &self.items[original_idx];
+                    if in_remove {
+                        let is_marked = marked.contains(&original_idx);
+                        let prefix = if is_marked { "[x] " } else { "[ ] " };
+                        let style = if is_marked {
                             Style::default().fg(Color::Red)
                         } else {
                             Style::default()
@@ -265,17 +472,24 @@ impl ListScreen {
         }
 
         let status_text = self.transient_status.clone().unwrap_or_else(|| {
-            let count = self.items.len();
             match &self.mode {
-                Mode::Browse => format!(
-                    "{}  |  {} event(s)  |  q quit  j/k move  g/G top/bottom  d remove",
-                    self.file_label, count,
-                ),
+                Mode::Browse => match &self.filter {
+                    Some(f) => format!(
+                        "{}  |  [filter: {f}] {visible} of {total}  |  / search  Esc-via-/ clear",
+                        self.file_label,
+                    ),
+                    None => format!(
+                        "{}  |  {total} event(s)  |  / search  a add  e edit  d remove  ? help",
+                        self.file_label,
+                    ),
+                },
                 Mode::Remove { marked } => format!(
-                    "REMOVE  |  {} marked / {} total  |  space toggle  Enter confirm  Esc cancel",
+                    "REMOVE  |  {} marked / {visible} of {total}  |  space toggle  Enter confirm  Esc cancel",
                     marked.len(),
-                    count,
                 ),
+                Mode::Search { .. } => {
+                    "Search  |  type to filter  Enter commit  Esc cancel".to_string()
+                }
             }
         });
         frame.render_widget(Paragraph::new(status_text), status_area);
@@ -509,5 +723,148 @@ mod tests {
         s.set_transient_status("Removed 1 event(s).");
         s.handle(Intent::NavDown);
         assert_eq!(s.transient_status, None);
+    }
+
+    // --- Search mode ----------------------------------------------------
+
+    fn distinct_summaries() -> Vec<VEvent> {
+        vec![
+            make_event((2026, 1, 1), (2026, 1, 2), "元日"),
+            make_event((2026, 2, 11), (2026, 2, 12), "建国記念の日"),
+            make_event((2026, 5, 3), (2026, 5, 7), "連休"),
+            make_event((2026, 5, 10), (2026, 5, 11), "Travel"),
+        ]
+    }
+
+    #[test]
+    fn open_search_enters_search_mode_and_is_modal() {
+        let mut s = ListScreen::from_events(&distinct_summaries(), "h.ics");
+        assert!(!s.is_search_mode());
+        s.handle(Intent::OpenSearch);
+        assert!(s.is_search_mode());
+    }
+
+    #[test]
+    fn open_search_is_noop_in_remove_mode() {
+        let mut s = ListScreen::from_events(&distinct_summaries(), "h.ics");
+        s.handle(Intent::OpenRemove);
+        s.handle(Intent::OpenSearch);
+        assert!(s.is_remove_mode());
+        assert!(!s.is_search_mode());
+    }
+
+    #[test]
+    fn typing_in_search_live_filters() {
+        let mut s = ListScreen::from_events(&distinct_summaries(), "h.ics");
+        s.handle(Intent::OpenSearch);
+        for c in "trav".chars() {
+            s.handle(Intent::TypeChar(c));
+        }
+        // 4 events, only "Travel" matches "trav" (case-insensitive).
+        assert_eq!(s.filtered_indices().len(), 1);
+    }
+
+    #[test]
+    fn submit_commits_filter_and_returns_to_browse() {
+        let mut s = ListScreen::from_events(&distinct_summaries(), "h.ics");
+        s.handle(Intent::OpenSearch);
+        for c in "連".chars() {
+            s.handle(Intent::TypeChar(c));
+        }
+        s.handle(Intent::SubmitForm);
+        assert!(!s.is_search_mode());
+        assert_eq!(s.filter(), Some("連"));
+        assert_eq!(s.filtered_indices().len(), 1);
+    }
+
+    #[test]
+    fn cancel_restores_previous_filter() {
+        let mut s = ListScreen::from_events(&distinct_summaries(), "h.ics");
+        // First commit "連" as the baseline filter.
+        s.handle(Intent::OpenSearch);
+        s.handle(Intent::TypeChar('連'));
+        s.handle(Intent::SubmitForm);
+        assert_eq!(s.filter(), Some("連"));
+        // Re-enter Search, change draft, then Cancel — original sticks.
+        s.handle(Intent::OpenSearch);
+        for c in "trav".chars() {
+            s.handle(Intent::TypeChar(c));
+        }
+        s.handle(Intent::Cancel);
+        assert!(!s.is_search_mode());
+        assert_eq!(s.filter(), Some("連"));
+    }
+
+    #[test]
+    fn empty_submit_clears_filter() {
+        let mut s = ListScreen::from_events(&distinct_summaries(), "h.ics");
+        s.handle(Intent::OpenSearch);
+        s.handle(Intent::TypeChar('連'));
+        s.handle(Intent::SubmitForm);
+        assert_eq!(s.filter(), Some("連"));
+        // Re-enter search; the prior filter pre-populates the draft.
+        // Backspace-clear it then commit empty — filter is cleared.
+        s.handle(Intent::OpenSearch);
+        s.handle(Intent::Backspace);
+        s.handle(Intent::SubmitForm);
+        assert!(s.filter().is_none());
+    }
+
+    #[test]
+    fn nav_in_filtered_browse_stays_within_filtered_count() {
+        let mut s = ListScreen::from_events(&distinct_summaries(), "h.ics");
+        s.handle(Intent::OpenSearch);
+        s.handle(Intent::TypeChar('日'));
+        s.handle(Intent::SubmitForm);
+        // 元日 and 建国記念の日 both contain 日.
+        assert_eq!(s.filtered_indices().len(), 2);
+        s.handle(Intent::NavBottom);
+        assert_eq!(s.selected(), Some(1));
+        s.handle(Intent::NavDown); // saturates
+        assert_eq!(s.selected(), Some(1));
+    }
+
+    #[test]
+    fn open_edit_reports_original_index_not_filtered() {
+        let mut s = ListScreen::from_events(&distinct_summaries(), "h.ics");
+        s.handle(Intent::OpenSearch);
+        s.handle(Intent::TypeChar('連')); // matches index 2 only ("連休")
+        s.handle(Intent::SubmitForm);
+        assert_eq!(s.filtered_indices(), vec![2]);
+        match s.handle(Intent::OpenEdit) {
+            ScreenAction::OpenEdit { event_index } => assert_eq!(event_index, 3), // 1-based original
+            other => panic!("expected OpenEdit{{3}}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn toggle_mark_uses_original_index_under_filter() {
+        let mut s = ListScreen::from_events(&distinct_summaries(), "h.ics");
+        s.handle(Intent::OpenSearch);
+        s.handle(Intent::TypeChar('日'));
+        s.handle(Intent::SubmitForm);
+        // Filtered: [0, 1] (元日 at 0, 建国記念の日 at 1).
+        s.handle(Intent::OpenRemove);
+        s.handle(Intent::ToggleMark); // selected = filtered[0] = original 0
+        assert_eq!(s.marked(), vec![0]);
+        s.handle(Intent::NavDown);
+        s.handle(Intent::ToggleMark); // selected = filtered[1] = original 1
+        assert_eq!(s.marked(), vec![0, 1]);
+        // Confirm produces 1-based original indices.
+        match s.handle(Intent::Confirm) {
+            ScreenAction::RemoveByIndices(idx) => assert_eq!(idx, vec![1, 2]),
+            other => panic!("got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_filter_match_clamps_selection_to_none() {
+        let mut s = ListScreen::from_events(&distinct_summaries(), "h.ics");
+        s.handle(Intent::OpenSearch);
+        for c in "zzzzz".chars() {
+            s.handle(Intent::TypeChar(c));
+        }
+        assert_eq!(s.filtered_indices().len(), 0);
+        assert_eq!(s.selected(), None);
     }
 }

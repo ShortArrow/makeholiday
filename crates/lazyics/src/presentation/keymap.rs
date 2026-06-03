@@ -37,6 +37,10 @@ pub enum Intent {
     OpenRemove,
     OpenAdd,
     OpenEdit,
+    /// Enter search mode (List view, Browse). The active screen switches
+    /// the keymap into Form mode so subsequent typed characters land in
+    /// the filter input.
+    OpenSearch,
     /// Toggle the help overlay. Same key opens and closes.
     OpenHelp,
     ToggleMark,
@@ -85,6 +89,7 @@ fn map_browse(event: KeyEvent) -> Option<Intent> {
         (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Intent::CycleGranularity),
         (KeyCode::Char('a'), KeyModifiers::NONE) => Some(Intent::OpenAdd),
         (KeyCode::Char('e'), KeyModifiers::NONE) => Some(Intent::OpenEdit),
+        (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Intent::OpenSearch),
         // `?` arrives as Char('?') with Shift on most layouts; accept any modifiers.
         (KeyCode::Char('?'), _) => Some(Intent::OpenHelp),
         (KeyCode::Char('d'), KeyModifiers::NONE) => Some(Intent::OpenRemove),
@@ -266,6 +271,24 @@ mod tests {
         assert_eq!(
             map(press(KeyCode::Up, KeyModifiers::NONE), KeymapMode::Form),
             Some(Intent::PrevField)
+        );
+    }
+
+    #[test]
+    fn slash_opens_search_in_browse_types_in_form() {
+        assert_eq!(
+            map(
+                press(KeyCode::Char('/'), KeyModifiers::NONE),
+                KeymapMode::Browse
+            ),
+            Some(Intent::OpenSearch)
+        );
+        assert_eq!(
+            map(
+                press(KeyCode::Char('/'), KeyModifiers::NONE),
+                KeymapMode::Form
+            ),
+            Some(Intent::TypeChar('/'))
         );
     }
 
