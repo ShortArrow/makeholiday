@@ -445,6 +445,15 @@ CRUD (where each affordance applies):
   Space               Toggle mark on highlighted row (Remove mode)
   Enter | Shift+D     Confirm removal of marked events
   / (List only)       Open search-as-you-type filter
+  m (Grid only)       Open month-jump picker
+  Y (Grid only)       Open year-jump picker
+
+Grid jump pickers:
+  h | j | k | l       Move picker selection
+  Enter               Jump cursor to selected month / year
+  q | Esc             Cancel
+  l at right edge     Scroll year window +1 (Year picker only)
+  h at left edge      Scroll year window -1 (Year picker only)
 
 Event form (Add / Edit):
   Tab | Shift+Tab     Next / previous field

@@ -41,6 +41,10 @@ pub enum Intent {
     /// the keymap into Form mode so subsequent typed characters land in
     /// the filter input.
     OpenSearch,
+    /// Open the month-jump picker (Grid view, Browse).
+    OpenMonthPicker,
+    /// Open the year-jump picker (Grid view, Browse).
+    OpenYearPicker,
     /// Toggle the help overlay. Same key opens and closes.
     OpenHelp,
     ToggleMark,
@@ -90,6 +94,8 @@ fn map_browse(event: KeyEvent) -> Option<Intent> {
         (KeyCode::Char('a'), KeyModifiers::NONE) => Some(Intent::OpenAdd),
         (KeyCode::Char('e'), KeyModifiers::NONE) => Some(Intent::OpenEdit),
         (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Intent::OpenSearch),
+        (KeyCode::Char('m'), KeyModifiers::NONE) => Some(Intent::OpenMonthPicker),
+        (KeyCode::Char('Y'), KeyModifiers::SHIFT) => Some(Intent::OpenYearPicker),
         // `?` arrives as Char('?') with Shift on most layouts; accept any modifiers.
         (KeyCode::Char('?'), _) => Some(Intent::OpenHelp),
         (KeyCode::Char('d'), KeyModifiers::NONE) => Some(Intent::OpenRemove),
@@ -271,6 +277,35 @@ mod tests {
         assert_eq!(
             map(press(KeyCode::Up, KeyModifiers::NONE), KeymapMode::Form),
             Some(Intent::PrevField)
+        );
+    }
+
+    #[test]
+    fn m_opens_month_picker_in_browse_types_in_form() {
+        assert_eq!(
+            map(
+                press(KeyCode::Char('m'), KeyModifiers::NONE),
+                KeymapMode::Browse
+            ),
+            Some(Intent::OpenMonthPicker)
+        );
+        assert_eq!(
+            map(
+                press(KeyCode::Char('m'), KeyModifiers::NONE),
+                KeymapMode::Form
+            ),
+            Some(Intent::TypeChar('m'))
+        );
+    }
+
+    #[test]
+    fn shift_y_opens_year_picker_in_browse() {
+        assert_eq!(
+            map(
+                press(KeyCode::Char('Y'), KeyModifiers::SHIFT),
+                KeymapMode::Browse
+            ),
+            Some(Intent::OpenYearPicker)
         );
     }
 

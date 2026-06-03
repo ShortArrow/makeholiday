@@ -54,6 +54,8 @@ impl HelpScreen {
             | Intent::OpenAdd
             | Intent::OpenEdit
             | Intent::OpenSearch
+            | Intent::OpenMonthPicker
+            | Intent::OpenYearPicker
             | Intent::ToggleMark
             | Intent::Confirm
             | Intent::TypeChar(_)
@@ -155,6 +157,15 @@ fn help_lines() -> Vec<Line<'static>> {
             "Confirm removal of marked events",
         ),
         binding("/ (List only)", "Open search-as-you-type filter"),
+        binding("m (Grid only)", "Open month-jump picker"),
+        binding("Y (Grid only)", "Open year-jump picker"),
+        blank(),
+        header("Jump pickers (Grid)"),
+        binding("h | j | k | l", "Move picker selection"),
+        binding("Enter", "Jump cursor to selected month / year and close"),
+        binding("q | Esc", "Cancel and close picker (cursor unchanged)"),
+        binding("l at right edge (Year)", "Scroll year window +1 year"),
+        binding("h at left edge (Year)", "Scroll year window -1 year"),
         blank(),
         header("Search (List view)"),
         binding("Any printable key", "Append to filter (live-updates list)"),

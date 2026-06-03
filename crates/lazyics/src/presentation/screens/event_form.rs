@@ -262,6 +262,8 @@ impl EventForm {
             | Intent::OpenEdit
             | Intent::OpenSearch
             | Intent::OpenHelp
+            | Intent::OpenMonthPicker
+            | Intent::OpenYearPicker
             | Intent::ToggleMark
             | Intent::Confirm => ScreenAction::Continue,
         }

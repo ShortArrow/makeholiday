@@ -166,7 +166,9 @@ impl TimelineScreen {
             | Intent::Backspace
             | Intent::NextField
             | Intent::PrevField
-            | Intent::SubmitForm => ScreenAction::Continue,
+            | Intent::SubmitForm
+            | Intent::OpenMonthPicker
+            | Intent::OpenYearPicker => ScreenAction::Continue,
         }
     }
 

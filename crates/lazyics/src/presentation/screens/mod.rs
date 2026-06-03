@@ -141,8 +141,11 @@ impl Screen {
         match self {
             Screen::List(_) => Some(ViewKind::List),
             Screen::Timeline(_) => Some(ViewKind::Timeline),
-            Screen::Grid(_) => Some(ViewKind::Grid),
-            Screen::EventForm(_) | Screen::Help(_) => None,
+            // Grid in picker mode acts as a non-view: view-switching
+            // shortcuts (Tab / 1 / 2 / 3) get inert until the user
+            // commits or cancels the jump.
+            Screen::Grid(s) if !s.is_picker_mode() => Some(ViewKind::Grid),
+            _ => None,
         }
     }
 

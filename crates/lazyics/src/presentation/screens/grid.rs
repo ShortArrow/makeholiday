@@ -19,10 +19,10 @@ use chrono::{Datelike, Days, NaiveDate, Weekday};
 use ics_core::VEvent;
 use icscli::application::ports::CalendarRepository;
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::error::Result;
 use crate::presentation::keymap::Intent;
@@ -54,6 +54,23 @@ impl Granularity {
     }
 }
 
+/// Sub-mode for [`GridScreen`]. `MonthPicker` / `YearPicker` overlay the
+/// grid and own their own selection state while open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Browse,
+    MonthPicker {
+        /// 1-12, the month the picker cursor is on.
+        month: u32,
+    },
+    YearPicker {
+        /// 0..12 — position within the visible 12-year window.
+        index: usize,
+        /// Leftmost year shown; window is `range_start ..= range_start + 11`.
+        range_start: i32,
+    },
+}
+
 pub struct GridScreen {
     events: Vec<VEvent>,
     /// All dates each event covers — start..=end_inclusive — pre-indexed
@@ -61,6 +78,7 @@ pub struct GridScreen {
     events_by_date: BTreeMap<NaiveDate, Vec<usize>>,
     cursor: NaiveDate,
     granularity: Granularity,
+    mode: Mode,
     file_label: String,
     transient_status: Option<String>,
 }
@@ -88,6 +106,7 @@ impl GridScreen {
             events_by_date,
             cursor,
             granularity: Granularity::Month,
+            mode: Mode::Browse,
             file_label: file_label.into(),
             transient_status: None,
         }
@@ -117,8 +136,23 @@ impl GridScreen {
         self.transient_status = Some(msg.into());
     }
 
+    /// Whether a month- or year-jump picker is currently overlaid on the
+    /// grid. Composition Root forwards this through `Screen::kind()` so
+    /// view-switching shortcuts (Tab / 1 / 2 / 3) stay inert while the
+    /// picker is up.
+    pub fn is_picker_mode(&self) -> bool {
+        !matches!(self.mode, Mode::Browse)
+    }
+
     pub fn handle(&mut self, intent: Intent) -> ScreenAction {
         self.transient_status = None;
+        if self.is_picker_mode() {
+            return self.handle_picker(intent);
+        }
+        self.handle_browse(intent)
+    }
+
+    fn handle_browse(&mut self, intent: Intent) -> ScreenAction {
         match intent {
             Intent::Quit | Intent::ForceQuit => ScreenAction::Quit,
             Intent::Cancel => ScreenAction::Continue,
@@ -175,6 +209,21 @@ impl GridScreen {
                     ScreenAction::Continue
                 }
             },
+            Intent::OpenMonthPicker => {
+                self.mode = Mode::MonthPicker {
+                    month: self.cursor.month(),
+                };
+                ScreenAction::Continue
+            }
+            Intent::OpenYearPicker => {
+                // Window of 12 years with cursor's year at index 5
+                // (row 1, col 1 of the 3×4 grid).
+                self.mode = Mode::YearPicker {
+                    index: 5,
+                    range_start: self.cursor.year() - 5,
+                };
+                ScreenAction::Continue
+            }
             Intent::OpenRemove
             | Intent::OpenSearch
             | Intent::ToggleMark
@@ -187,6 +236,118 @@ impl GridScreen {
             | Intent::PrevField
             | Intent::SubmitForm => ScreenAction::Continue,
         }
+    }
+
+    fn handle_picker(&mut self, intent: Intent) -> ScreenAction {
+        match intent {
+            // Hard exit and overlay-close affordances. `q` closes the
+            // picker (not the app) — matching the help-overlay convention.
+            Intent::ForceQuit => ScreenAction::Quit,
+            Intent::Quit | Intent::Cancel => {
+                self.mode = Mode::Browse;
+                ScreenAction::Continue
+            }
+            Intent::Confirm => {
+                self.commit_picker();
+                ScreenAction::Continue
+            }
+            Intent::NavLeft => {
+                self.picker_step(-1, 0);
+                ScreenAction::Continue
+            }
+            Intent::NavRight => {
+                self.picker_step(1, 0);
+                ScreenAction::Continue
+            }
+            Intent::NavUp => {
+                self.picker_step(0, -1);
+                ScreenAction::Continue
+            }
+            Intent::NavDown => {
+                self.picker_step(0, 1);
+                ScreenAction::Continue
+            }
+            Intent::NavTop => {
+                match &mut self.mode {
+                    Mode::MonthPicker { month } => *month = 1,
+                    Mode::YearPicker { index, .. } => *index = 0,
+                    Mode::Browse => unreachable!(),
+                }
+                ScreenAction::Continue
+            }
+            Intent::NavBottom => {
+                match &mut self.mode {
+                    Mode::MonthPicker { month } => *month = 12,
+                    Mode::YearPicker { index, .. } => *index = 11,
+                    Mode::Browse => unreachable!(),
+                }
+                ScreenAction::Continue
+            }
+            // The picker stays focused; ignore everything else.
+            _ => ScreenAction::Continue,
+        }
+    }
+
+    /// Move the picker selection by (dx, dy) cells. For Year picker, hitting
+    /// the left/right edge slides the visible window instead of clamping —
+    /// so the user can reach any year by holding `l` or `h`.
+    fn picker_step(&mut self, dx: i32, dy: i32) {
+        match &mut self.mode {
+            Mode::MonthPicker { month } => {
+                let idx = (*month as i32) - 1; // 0..12
+                let row = idx / 4;
+                let col = idx % 4;
+                let new_row = (row + dy).clamp(0, 2);
+                let new_col = (col + dx).clamp(0, 3);
+                *month = (new_row * 4 + new_col + 1) as u32;
+            }
+            Mode::YearPicker { index, range_start } => {
+                let i = *index as i32;
+                let row = i / 4;
+                let col = i % 4;
+                // Vertical: clamp within visible rows (no window scroll).
+                let new_row = (row + dy).clamp(0, 2);
+                // Horizontal: linear through all 12 cells, scrolling the
+                // window at the extremes so the user can reach any year.
+                let mut new_idx = new_row * 4 + col + dx;
+                if new_idx < 0 {
+                    *range_start -= 1;
+                    new_idx = 0;
+                } else if new_idx > 11 {
+                    *range_start += 1;
+                    new_idx = 11;
+                }
+                *index = new_idx as usize;
+            }
+            Mode::Browse => unreachable!(),
+        }
+    }
+
+    /// Apply the picker's selection to `cursor` and return to Browse.
+    /// Preserves day-of-month when valid (clamps to last day of target
+    /// month when not, e.g. May 31 → Feb 28).
+    fn commit_picker(&mut self) {
+        match self.mode {
+            Mode::MonthPicker { month } => {
+                let day = self
+                    .cursor
+                    .day()
+                    .min(days_in_month(self.cursor.year(), month));
+                if let Some(d) = NaiveDate::from_ymd_opt(self.cursor.year(), month, day) {
+                    self.cursor = d;
+                }
+            }
+            Mode::YearPicker { index, range_start } => {
+                let year = range_start + index as i32;
+                let m = self.cursor.month();
+                let day = self.cursor.day().min(days_in_month(year, m));
+                if let Some(d) = NaiveDate::from_ymd_opt(year, m, day) {
+                    self.cursor = d;
+                }
+            }
+            Mode::Browse => {}
+        }
+        self.mode = Mode::Browse;
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
@@ -232,14 +393,29 @@ impl GridScreen {
             .unwrap_or_else(|| "(no events)".to_string());
         frame.render_widget(Paragraph::new(detail_text), detail_inner);
 
-        let status_text = self.transient_status.clone().unwrap_or_else(|| {
-            format!(
-                "{}  |  {} unit  |  Tab/1/2/3 view  h/l day  j/k week  u unit  q quit",
-                self.file_label,
-                self.granularity.label(),
-            )
-        });
+        let status_text = self
+            .transient_status
+            .clone()
+            .unwrap_or_else(|| match &self.mode {
+                Mode::Browse => format!(
+                    "{}  |  {} unit  |  m month-jump  Y year-jump  Tab view  u unit  q quit",
+                    self.file_label,
+                    self.granularity.label(),
+                ),
+                Mode::MonthPicker { .. } | Mode::YearPicker { .. } => {
+                    "Picker  |  hjkl move  Enter jump  q/Esc cancel".to_string()
+                }
+            });
         frame.render_widget(Paragraph::new(status_text), status_area);
+
+        // Picker overlay on top of the grid + detail panel.
+        match &self.mode {
+            Mode::Browse => {}
+            Mode::MonthPicker { month } => render_month_picker(frame, *month),
+            Mode::YearPicker { index, range_start } => {
+                render_year_picker(frame, *index, *range_start)
+            }
+        }
     }
 
     fn render_grid_lines(&self) -> Vec<Line<'static>> {
@@ -427,6 +603,95 @@ fn first_of_year(date: NaiveDate) -> NaiveDate {
 
 fn last_of_year(date: NaiveDate) -> NaiveDate {
     NaiveDate::from_ymd_opt(date.year(), 12, 31).expect("Dec 31 always valid")
+}
+
+/// Compute a popup `Rect` of `(width × height)` centered in `area`.
+fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let y = area.y + area.height.saturating_sub(height) / 2;
+    Rect {
+        x,
+        y,
+        width: width.min(area.width),
+        height: height.min(area.height),
+    }
+}
+
+fn render_month_picker(frame: &mut Frame, selected_month: u32) {
+    let area = centered_rect(30, 7, frame.area());
+    frame.render_widget(Clear, area);
+    let block = Block::default()
+        .title("Jump to month")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    const NAMES: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    let mut lines = Vec::with_capacity(3);
+    for row in 0..3 {
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        for col in 0..4 {
+            let m = (row * 4 + col + 1) as u32;
+            let label = format!(" {} ", NAMES[(m - 1) as usize]);
+            let style = if m == selected_month {
+                Style::default()
+                    .add_modifier(Modifier::REVERSED)
+                    .fg(Color::Yellow)
+            } else {
+                Style::default()
+            };
+            spans.push(Span::styled(label, style));
+            spans.push(Span::raw(" "));
+        }
+        lines.push(Line::from(spans));
+    }
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_year_picker(frame: &mut Frame, selected_index: usize, range_start: i32) {
+    let area = centered_rect(34, 7, frame.area());
+    frame.render_widget(Clear, area);
+    let block = Block::default()
+        .title("Jump to year")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let mut lines = Vec::with_capacity(3);
+    for row in 0..3 {
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        for col in 0..4 {
+            let idx = row * 4 + col;
+            let year = range_start + idx as i32;
+            let label = format!(" {year} ");
+            let style = if idx == selected_index {
+                Style::default()
+                    .add_modifier(Modifier::REVERSED)
+                    .fg(Color::Yellow)
+            } else {
+                Style::default()
+            };
+            spans.push(Span::styled(label, style));
+            spans.push(Span::raw(" "));
+        }
+        lines.push(Line::from(spans));
+    }
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+fn days_in_month(year: i32, month: u32) -> u32 {
+    let (ny, nm) = if month == 12 {
+        (year + 1, 1)
+    } else {
+        (year, month + 1)
+    };
+    let next = NaiveDate::from_ymd_opt(ny, nm, 1).expect("next month always valid");
+    let last = next - Days::new(1);
+    last.day()
 }
 
 // Suppress unused warning — kept available for future "jump to weekday" logic.
@@ -634,5 +899,121 @@ mod tests {
         let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
         assert_eq!(s.handle(Intent::OpenEdit), ScreenAction::Continue);
         assert!(s.transient_status.as_ref().unwrap().contains("No event"));
+    }
+
+    // --- Pickers --------------------------------------------------------
+
+    #[test]
+    fn open_month_picker_enters_picker_mode_seeded_to_current_month() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        assert!(!s.is_picker_mode());
+        s.handle(Intent::OpenMonthPicker);
+        assert!(s.is_picker_mode());
+        match s.mode {
+            Mode::MonthPicker { month } => assert_eq!(month, 5),
+            ref other => panic!("expected MonthPicker, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_year_picker_centers_window_on_current_year() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::OpenYearPicker);
+        match s.mode {
+            Mode::YearPicker { index, range_start } => {
+                assert_eq!(index, 5);
+                assert_eq!(range_start, 2021);
+                assert_eq!(range_start + index as i32, 2026);
+            }
+            ref other => panic!("expected YearPicker, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn confirm_in_month_picker_jumps_cursor_and_closes() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::OpenMonthPicker);
+        s.handle(Intent::NavRight);
+        s.handle(Intent::NavRight);
+        s.handle(Intent::NavRight);
+        assert!(matches!(s.mode, Mode::MonthPicker { month: 8 }));
+        s.handle(Intent::Confirm);
+        assert!(!s.is_picker_mode());
+        assert_eq!(s.cursor(), day(2026, 8, 15));
+    }
+
+    #[test]
+    fn confirm_in_year_picker_jumps_cursor_and_closes() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::OpenYearPicker);
+        s.handle(Intent::NavRight);
+        s.handle(Intent::NavDown);
+        s.handle(Intent::Confirm);
+        assert!(!s.is_picker_mode());
+        assert_eq!(s.cursor(), day(2031, 5, 15));
+    }
+
+    #[test]
+    fn cancel_in_picker_leaves_cursor_unchanged() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::OpenMonthPicker);
+        s.handle(Intent::NavRight);
+        s.handle(Intent::NavRight);
+        s.handle(Intent::Cancel);
+        assert!(!s.is_picker_mode());
+        assert_eq!(s.cursor(), day(2026, 5, 15));
+    }
+
+    #[test]
+    fn soft_quit_in_picker_closes_picker_not_app() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::OpenMonthPicker);
+        assert_eq!(s.handle(Intent::Quit), ScreenAction::Continue);
+        assert!(!s.is_picker_mode());
+        assert_eq!(s.cursor(), day(2026, 5, 15));
+    }
+
+    #[test]
+    fn force_quit_in_picker_exits_app() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::OpenMonthPicker);
+        assert_eq!(s.handle(Intent::ForceQuit), ScreenAction::Quit);
+    }
+
+    #[test]
+    fn year_picker_right_edge_scrolls_window() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 15));
+        s.handle(Intent::OpenYearPicker);
+        for _ in 0..6 {
+            s.handle(Intent::NavRight);
+        }
+        match s.mode {
+            Mode::YearPicker { index, range_start } => {
+                assert_eq!(index, 11);
+                assert_eq!(range_start, 2021);
+                assert_eq!(range_start + index as i32, 2032);
+            }
+            _ => panic!(),
+        }
+        s.handle(Intent::NavRight);
+        match s.mode {
+            Mode::YearPicker { index, range_start } => {
+                assert_eq!(index, 11);
+                assert_eq!(range_start, 2022);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn month_picker_day_clamps_when_target_month_shorter() {
+        let mut s = GridScreen::from_events_with_today(&[], "h.ics", day(2026, 5, 31));
+        s.handle(Intent::OpenMonthPicker);
+        // May = (row 1, col 0). Feb = (row 0, col 1). Up 1, right 1.
+        s.handle(Intent::NavUp);
+        s.handle(Intent::NavRight);
+        assert!(matches!(s.mode, Mode::MonthPicker { month: 2 }));
+        s.handle(Intent::Confirm);
+        assert_eq!(s.cursor(), day(2026, 2, 28));
     }
 }
