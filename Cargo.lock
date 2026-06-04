@@ -644,7 +644,7 @@ dependencies = [
 
 [[package]]
 name = "ics-core"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "serde",
@@ -652,7 +652,7 @@ dependencies = [
 
 [[package]]
 name = "icscli"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -668,7 +668,7 @@ dependencies = [
 
 [[package]]
 name = "icslint"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -781,7 +781,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "lazyics"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "assert_cmd",
  "chrono",

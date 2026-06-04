@@ -6,13 +6,47 @@ All notable changes to this project will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from `1.0.0` onward. Pre-1.0 releases may include breaking changes; see [ADR-004](docs/design/004-trunk-based-and-semver.md).
 
-## [Unreleased — v0.2.0 track]
+## [Unreleased]
+
+## [0.2.0] - 2026-06-04
+
+The v0.2.0 "In-tree ICS Ecosystem" milestone. Per the 2026-06-04 amendment to [ADR-017](docs/design/017-workspace-and-ics-core-crate.md), `ics-core` stays in this workspace as a path dependency until four maturity gates close (timed events, full VTODO editing, ICS file composition, ICS file split). v0.2.0 ships as a source release — no crates.io upload; install via `cargo install --git`.
+
+Workspace test totals at ship: 105 ics-core + 19+16 icscli + 81 icslint + 138+7 lazyics = **383 tests green**, clippy clean, fmt clean.
+
+### Added
+
+- **`lazyics` — interactive TUI editor** ([ADR-025](docs/design/025-lazyics-project-definition.md)). Six phases of development land in v0.2.0:
+  - Phase 1: ratatui scaffolding — RAII terminal guard, keymap → Intent indirection, Composition Root with TTY guard.
+  - Phase 2: real calendar load via `icscli::infrastructure::FileCalendarRepository`, empty-calendar hint.
+  - Phase 3a: multi-select Remove mode on List view (`d`/`x` enter, Space mark, Enter/Shift+D confirm, Esc cancel).
+  - Phase 3b: Add form modal with 7 fields (Summary, Start, End, busystatus, class, categories, icon). TextInput widget is Unicode-safe (char-indexed cursor).
+  - Phase 3c: Edit form via `EventForm` + `FormMode { Add, Edit { event_index } }` — pre-populated from selected event, submits via `icscli::application::use_cases::edit`. `EditPatch` derives `Clone + PartialEq` upstream so it can ride on `ScreenAction`.
+  - Phase 4a: multi-view (List / Timeline / Grid) with `Tab` cycle and `1` / `2` / `3` direct jump; per-view time-granularity selector.
+  - Granularity::Year for Timeline (year-grouped events) and Grid (12-month `cal -y` style mini-grids); `u` rotates week → month → year → week.
+  - Add / Edit reachable from every view; Grid pre-fills Start with cursor date, Timeline emits `OpenEditByUid` for the selected event.
+  - In-app help overlay (`?` toggles); help text is the canonical behavior spec ([memory: feedback-help-text-is-a-contract](#)).
+  - Search-as-you-type filter on List view (`/`). Browse `Esc` is a no-op (q or Ctrl+C to quit); `q` in overlays closes them.
+  - Month-jump and year-jump pickers on Grid (`m` and `Y`). Year picker scrolls its window at the edges so any year is reachable.
+  - Form ergonomics: `Ctrl+N` / `Ctrl+P` field nav; `h` / `l` cycle the focused picker.
+  - Grid visual-range mode (`v`) with cursor↔anchor underline; `a` opens Add with Start and End pre-filled to the range bounds for multi-day events in one shot.
+- **`icslint` — ICS lint tool** ([ADR-026](docs/design/026-icslint-project-definition.md)). 20 rules across four families (RFC5545 / vendor / text / structure) and three output formats (`human` / `json` / `github`).
+- icscli (formerly makeholiday): the `edit` subcommand, `--quiet` / `--interactive` flags, ADR-019 parser correctness (line folding, BOM handling, TEXT escape decode/encode), per-subcommand `long_about` examples ([ADR-020](docs/design/020-cli-subcommand-policy.md)).
 
 ### Changed
 
 - **Breaking: renamed CLI binary `makeholiday` → `icscli`** ([ADR-027](docs/design/027-makeholiday-to-icscli-rename.md)). The workspace member moves from `crates/makeholiday/` to `crates/icscli/`; package name, `[[bin]]` name, library import path (`use icscli::*`), and error type (`MhError` → `IcsError`) all rename together. The repository remains `github.com/ShortArrow/makeholiday` to preserve crates.io Trusted Publisher bindings. `makeholiday` was never published to crates.io, so no Cargo migration shim is required.
 - **Breaking: renamed vendor X-property `X-MAKEHOLIDAY-ICON` → `X-ICSCLI-ICON`**. Per ADR-027, pre-1.0 coherence beats backward compatibility. Old `X-MAKEHOLIDAY-ICON` properties in inbound `.ics` files survive via `VEvent.unknown` (raw round-trip) but lose typed icon semantics; the icon writer always emits `X-ICSCLI-ICON`.
 - **Breaking: PRODID changed from `-//makeholiday//EN` to `-//icscli//EN`** for newly initialized calendars.
+- [ADR-017](docs/design/017-workspace-and-ics-core-crate.md) §"Publishing strategy" amended (2026-06-04): the original "judged by the maintainer" trigger #2 is replaced with four concrete maturity gates — timed VEvent typing, full VTODO editing, ICS file composition, ICS file split. `ics-core` publication and repository split are deferred past v0.2.0 and out of the v0.3.0 milestone too. PRD §9 roadmap restructured around the gates.
+- icscli `EditPatch` derives `Clone + PartialEq` so downstream consumers (e.g. lazyics' `ScreenAction::SubmitEdit`) can carry it.
+
+### Deferred (not in v0.2.0)
+
+- `ics-core` crates.io publication and repository split — gated by the four maturity criteria above.
+- Timed VEvent typing ([ADR-001](docs/design/001-vendor-extension-typing.md) Rule 9 revision) — v0.3.0.
+- Full VTODO editing ([ADR-021](docs/design/021-vtodo-scope.md) lift) — v0.4.0.
+- ICS file composition + split — v0.5.0.
 
 ## [0.1.0] - 2026-05-29
 

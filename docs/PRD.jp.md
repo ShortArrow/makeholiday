@@ -113,35 +113,56 @@ v0.1.x シリーズ（`makeholiday` の名前で出荷）は CLI を「ハイフ
 - CLI UX polish（[ADR-015](design/015-diagnostic-output.md) `--quiet` / `--interactive`、[ADR-020](design/020-cli-subcommand-policy.md) help text の使用例）。
 - v0.1.0 で SemVer 用の CLI 表面契約を凍結（[ADR-004](design/004-trunk-based-and-semver.md)）。
 
-### v0.2.0 — ICS エコシステム（次戦線）
+### v0.2.0 — In-tree ICS エコシステム (2026-06-04 改訂)
 
-v0.2.0 シリーズはプロジェクトを「単独 CLI」から「同じ `ics-core` を消費する小さなツール群」に組み替える。ライブラリは in-tree workspace member から独立リポジトリ + crates.io 公開へ昇格する。
+v0.2.0 シリーズはプロジェクトを「単独 CLI」から「同じ `ics-core` を消費する 4 ツール集合」に組み替える。当初計画では `ics-core` をここで別リポジトリに切り出して crates.io 公開する予定だったが、2026-06-04 の方針見直しで deferred。[ADR-017](design/017-workspace-and-ics-core-crate.md) §"Publishing strategy" の trigger #2 を「4 つの maturity gate がすべて landing するまで」と具体化、いずれも v0.2.0 では閉じない。
 
-- **`ics-core` を別リポジトリに切り出し**、crates.io に公開。`ics-core` の version 契約はここから始まる（v0.1.x の monorepo 内実戦経験を踏まえる）。分離トリガとライフサイクルは [ADR-017](design/017-workspace-and-ics-core-crate.md)。
 - **`icscli` — CLI の改名**: v0.1.x の `makeholiday` から `ics*` エコシステムに合わせて改名（[ADR-027](design/027-makeholiday-to-icscli-rename.md)）。機能面は維持。
-- **`lazyics` — 対話的 TUI エディタ**: `.ics` ファイル向け、`lazygit` インスパイア。lazy- プレフィックスを TUI ツール命名規則として採用。**独立バイナリ**として配布（`cargo install lazyics`）、`ratatui` ベース、`icscli` library の use cases に依存して CLI / TUI のロジック乖離を構造的に防ぐ。[ADR-025](design/025-lazyics-project-definition.md) 参照（[ADR-022](design/022-tui-front-end-policy.md) を Supersede）。
-- **`icslint` — ICS リンタ**: `ics-core` を消費し、ベンダープレフィックス警告（"これは Microsoft 固有プロパティで Google クライアントは無視します" 等）と RFC コンプライアンスヒントを出す。v0.2.0 で 4 ルールファミリ — RFC 5545 cardinality/required、ベンダー hygiene、テキスト encoding、構造 — を ship。[ADR-026](design/026-icslint-project-definition.md) 参照。
-- `icscli` 自体も v0.1.x 路線の機能拡張を続ける — `search` / `filter`、`import` / `export`、カレンダーレベル拡張などもこのライン。
+- **`lazyics` — 対話的 TUI エディタ**: `.ics` ファイル向け、`lazygit` インスパイア。**独立バイナリ**、`ratatui` ベース、`icscli` library の use cases に依存して CLI / TUI のロジック乖離を構造的に防ぐ。List / Timeline / Grid の 3 view、week / month / year の granularity、multi-select Remove、search-as-you-type、全 view から到達できる Add / Edit form、月/年ジャンプピッカー、複数日 Add 用 visual-range モードを搭載。[ADR-025](design/025-lazyics-project-definition.md) 参照（[ADR-022](design/022-tui-front-end-policy.md) を Supersede）。
+- **`icslint` — ICS リンタ**: `ics-core` を消費し、ベンダープレフィックス警告と RFC コンプライアンスヒントを出す。v0.2.0 で 4 ルールファミリ — RFC 5545 cardinality/required、ベンダー hygiene、テキスト encoding、構造 — を ship。[ADR-026](design/026-icslint-project-definition.md) 参照。
+- **`ics-core` は workspace 内に留置**、上記 3 consumer のすべてが path dep で参照。v0.2.0 で crates.io にはアップロードしない。4 placeholder crate 名は `0.0.0` で予約状態を維持。
 
-3 ツール同時 launch が「エコシステム」テーマ。[ADR-024](design/024-solo-phase-branching-carve-out.md) の release-train discipline は `ics-core` の別リポジトリ着地の瞬間に再起動する（carve-out の第 1 トリガ）。
+v0.2.0 の配布形態: source release のみ。ユーザは
+`cargo install --git https://github.com/ShortArrow/makeholiday <bin>`
+（`icscli` / `icslint` / `lazyics`）で導入。git タグ `v0.2.0` がリリース成果物。
 
-### v0.3.0 — CalDAV / クラウドバックエンド
+[ADR-024](design/024-solo-phase-branching-carve-out.md) の release-train discipline は引き続きポーズ中（第 1 トリガ「`ics-core` の別リポジトリ着地」は本マイルストーンでは fire しない）。
 
-v0.3.0 シリーズはエコシステムを multi-backend ストーリーへ拡張する。`ics-core` のパーサと型モデルは無改修で継承できる（CalDAV 応答もすべて構文的に正当な `VCALENDAR` ブロブだから）。作業は I/O 境界、イベント identity、時刻 typed 化に集中する。
+### v0.3.0 — CalDAV / クラウドバックエンド & 時刻イベント
+
+v0.3.0 シリーズはエコシステムを multi-backend ストーリーへ拡張し、ついに時刻つきイベントを typed 化する。作業は I/O 境界、イベント identity、時刻 typed 化に集中。
 
 - CalDAV クライアント統合 — per-event `Repository` 抽象（`fetch_by_uid`, `put_event`, `delete_by_uid`）を bulk file-level API と並行で提供。
 - イベントリソース単位の ETag ベース楽観ロック。
-- Timed `VEvent` typed 化 — [ADR-001](design/001-vendor-extension-typing.md) Rule 9 を改訂し、`DTSTART;VALUE=DATE-TIME` イベントが `RawComponent` 行きにならないようにする。
+- **Timed `VEvent` typed 化 — maturity gate #1 を close** ([ADR-017](design/017-workspace-and-ics-core-crate.md) §"Publishing strategy")。[ADR-001](design/001-vendor-extension-typing.md) Rule 9 を改訂し、`DTSTART;VALUE=DATE-TIME` イベントが `RawComponent` 行きにならないようにする。
 - `VTimezone` typed 化を timed event 化と同時に。
 - クラウドカレンダー向けの認証スキャフォールディング（CalDAV サーバ、将来のプロバイダ固有 API）。
+- lazyics の Add / Edit form に時刻入力欄が追加 (型モデルが時刻を持つようになって初めて意味を持つ)。
 
-これにより [§7 スコープ外](#7-スコープ外-out-of-scope) の「マシン間でのカレンダー状態クラウド同期」がスコープインする。
+これにより [§7 スコープ外](#7-スコープ外-out-of-scope) の「マシン間でのカレンダー状態クラウド同期」がスコープインし、[ADR-017](design/017-workspace-and-ics-core-crate.md) の 4 つの maturity gate のうち 1 つが閉じる。
 
-### v0.3.0 以降
+### v0.4.0 — VTODO 編集機能
 
-未確定。現時点でウォッチリストに乗っている候補:
+[ADR-021](design/021-vtodo-scope.md) を「`list --include-todos` の read-only」から「`VEvent` と CRUD 同等」へ昇格。**maturity gate #2 を close** ([ADR-017](design/017-workspace-and-ics-core-crate.md) §"Publishing strategy")。
 
-- VTODO 編集機能の本格対応（現状は `list --include-todos` の read-only のみ計画。[ADR-021](design/021-vtodo-scope.md) 参照）。
+- icscli: `add-todo` / `edit-todo` / `remove-todo`（または既存 `add` / `edit` / `remove` への todo-flavored flag）。
+- lazyics: VTODO が view に登場、Add / Edit form がタスク項目をカバー。
+- icslint: VTODO 対応ルール拡充。
+
+### v0.5.0 — ICS ファイル合成 / 切り出し
+
+**maturity gate #3 と #4 を close** ([ADR-017](design/017-workspace-and-ics-core-crate.md) §"Publishing strategy")。
+
+- icscli `compose` / `merge` サブコマンド: 2 つ以上の `VCalendar` の typed merge。`UID` ベース de-dup、conflict-resolution policy、raw property 再結合。
+- icscli `split` / `extract` サブコマンド: 述語 (date range / summary 部分一致 / UID list) で `VCalendar` を typed 分割。
+- ics-core が裏付け combinator を公開 API として露出。
+
+### v0.5.0 以降 — `ics-core` 公開 & repo split
+
+[ADR-017](design/017-workspace-and-ics-core-crate.md) の 4 maturity gate すべてが閉じた段階で、`ics-core` を初めて crates.io に publish、別リポジトリに抽出。follow-up ADR に publish trigger（どの gate が最後に閉じたか）、選択 version、API curation、split の機序を記録。[ADR-024](design/024-solo-phase-branching-carve-out.md) の release-train discipline がこの瞬間に再起動する（carve-out の第 1 トリガ）。
+
+split 後のウォッチリスト候補:
+
 - 既存 Microsoft `busystatus` 以外のベンダープロファイル typed field 拡充。
 - RRULE materialize（繰り返しイベント展開）— 現状 §7 でスコープ外のまま。
 - プロバイダ固有クラウド API（Google Calendar API、Microsoft Graph）を CalDAV 形状の Repository 抽象の上に重ねる。

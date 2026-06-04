@@ -1,6 +1,6 @@
 [package]
 name = "lazyics"
-version = "0.2.0-dev"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -20,8 +20,8 @@ name = "lazyics"
 path = "src/lib.rs"
 
 [dependencies]
-ics-core = { path = "../ics-core", version = "0.0.0" }
-icscli = { path = "../icscli", version = "0.2.0-dev" }
+ics-core = { path = "../ics-core", version = "0.2.0" }
+icscli = { path = "../icscli", version = "0.2.0" }
 ratatui = "0.30"
 crossterm = "0.29"
 tracing = "0.1"

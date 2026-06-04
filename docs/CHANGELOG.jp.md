@@ -6,13 +6,47 @@
 
 形式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に従い、`1.0.0` 以降は [Semantic Versioning](https://semver.org/lang/ja/spec/v2.0.0.html) に準拠します。1.0 以前は破壊的変更を含む場合があります（[ADR-004](design/004-trunk-based-and-semver.md) 参照）。
 
-## [Unreleased — v0.2.0 トラック]
+## [Unreleased]
+
+## [0.2.0] - 2026-06-04
+
+v0.2.0「In-tree ICS エコシステム」マイルストーン。2026-06-04 の [ADR-017](design/017-workspace-and-ics-core-crate.md) 改訂により、`ics-core` は 4 つの maturity gate (時刻イベント、VTODO 編集、ICS 合成、ICS 切り出し) がすべて landing するまで workspace 内の path dep として留置。v0.2.0 は source release として ship、crates.io アップロードなし、`cargo install --git` で導入。
+
+ship 時点の workspace テスト合計: 105 ics-core + 19+16 icscli + 81 icslint + 138+7 lazyics = **383 テスト緑**、clippy clean、fmt clean。
+
+### 追加
+
+- **`lazyics` — 対話的 TUI エディタ** ([ADR-025](design/025-lazyics-project-definition.md))。v0.2.0 で 6 フェーズ着地:
+  - Phase 1: ratatui scaffolding — RAII ターミナルガード、keymap → Intent 間接化、TTY ガード付き Composition Root。
+  - Phase 2: 実カレンダー読み込み (`icscli::infrastructure::FileCalendarRepository` 経由)、空カレンダーヒント。
+  - Phase 3a: List view の multi-select Remove モード (`d`/`x` で突入、Space で mark、Enter/Shift+D で確定、Esc で cancel)。
+  - Phase 3b: 7 フィールドの Add フォーム modal (Summary, Start, End, busystatus, class, categories, icon)。TextInput widget は char-indexed cursor で Unicode セーフ。
+  - Phase 3c: `EventForm` + `FormMode { Add, Edit { event_index } }` 経由の Edit フォーム — 選択イベントから事前入力、`icscli::application::use_cases::edit` で送信。upstream の `EditPatch` に `Clone + PartialEq` derive 追加。
+  - Phase 4a: multi-view (List / Timeline / Grid)、`Tab` 巡回 + `1` / `2` / `3` 直接ジャンプ、各 view ごとに time-granularity 切替。
+  - Timeline / Grid の Granularity::Year (Grid は `cal -y` 風 12 月ミニグリッド)、`u` で week → month → year → week 巡回。
+  - Add / Edit が全 view から到達可能。Grid は cursor 日を Start に事前入力、Timeline は選択イベントの UID を `OpenEditByUid` で発行。
+  - In-app help overlay (`?` で開閉)、help text が canonical behavior spec ([memory: feedback-help-text-is-a-contract](#))。
+  - List view の search-as-you-type filter (`/`)。Browse の `Esc` は no-op (q か Ctrl+C で quit)、overlay の `q` で overlay 閉。
+  - Grid の月ジャンプ / 年ジャンプピッカー (`m` と `Y`)。年ピッカーは端でスクロールするので任意の年に到達可能。
+  - Form ergonomics: `Ctrl+N` / `Ctrl+P` でフィールド移動、`h` / `l` でフォーカス中のピッカーを cycle。
+  - Grid visual-range モード (`v`) で cursor↔anchor underline、`a` で Start と End が range 端に事前入力された Add フォームを開く (複数日イベントを 1 操作で作成)。
+- **`icslint` — ICS リンタ** ([ADR-026](design/026-icslint-project-definition.md))。4 ファミリ計 20 ルール (RFC5545 / vendor / text / structure) と 3 つの出力形式 (`human` / `json` / `github`)。
+- icscli (旧 makeholiday): `edit` サブコマンド、`--quiet` / `--interactive` flag、ADR-019 のパーサ correctness (行折り返し、BOM 処理、TEXT escape decode/encode)、各サブコマンドの `long_about` 例示 ([ADR-020](design/020-cli-subcommand-policy.md))。
 
 ### 変更
 
 - **破壊的: CLI バイナリ `makeholiday` を `icscli` に改名**（[ADR-027](design/027-makeholiday-to-icscli-rename.md)）。workspace member は `crates/makeholiday/` から `crates/icscli/` へ移動。パッケージ名、`[[bin]]` 名、ライブラリ import path（`use icscli::*`）、エラー型（`MhError` → `IcsError`）も同時改名。crates.io Trusted Publisher binding を保つため、リポジトリは `github.com/ShortArrow/makeholiday` のまま据え置き。`makeholiday` は crates.io 未公開のため、Cargo migration shim は不要。
 - **破壊的: ベンダー X-property `X-MAKEHOLIDAY-ICON` を `X-ICSCLI-ICON` に改名**。ADR-027 の方針通り、pre-1.0 のコヒーレンスを後方互換より優先。入力 .ics ファイル中の旧 `X-MAKEHOLIDAY-ICON` は `VEvent.unknown` 経由で raw round-trip されるが typed icon semantics は失われる。icon writer は常に `X-ICSCLI-ICON` を出力。
 - **破壊的: 新規初期化カレンダーの PRODID を `-//makeholiday//EN` から `-//icscli//EN` に変更**。
+- [ADR-017](design/017-workspace-and-ics-core-crate.md) §"Publishing strategy" 改訂 (2026-06-04): trigger #2 の「judged by the maintainer」が 4 つの maturity gate (時刻 VEvent typed 化、VTODO 編集、ICS 合成、ICS 切り出し) に具体化。`ics-core` の crates.io 公開と repo split は v0.2.0 だけでなく v0.3.0 マイルストーンからも除外。PRD §9 ロードマップを gate 単位で再構成。
+- icscli `EditPatch` に `Clone + PartialEq` derive 追加 (lazyics の `ScreenAction::SubmitEdit` で持ち回せるように)。
+
+### v0.2.0 では実施しない
+
+- `ics-core` の crates.io 公開と repo split — 上記 4 maturity criterion 待ち。
+- 時刻 VEvent typed 化 ([ADR-001](design/001-vendor-extension-typing.md) Rule 9 改訂) — v0.3.0。
+- VTODO 編集機能の本格対応 ([ADR-021](design/021-vtodo-scope.md) 昇格) — v0.4.0。
+- ICS ファイル合成 + 切り出し — v0.5.0。
 
 ## [0.1.0] - 2026-05-29
 

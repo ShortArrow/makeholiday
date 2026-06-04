@@ -1,6 +1,6 @@
 [package]
 name = "icscli"
-version = "0.2.0-dev"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -20,7 +20,7 @@ name = "icscli"
 path = "src/lib.rs"
 
 [dependencies]
-ics-core = { path = "../ics-core", version = "0.0.0" }
+ics-core = { path = "../ics-core", version = "0.2.0" }
 clap.workspace = true
 chrono.workspace = true
 serde.workspace = true

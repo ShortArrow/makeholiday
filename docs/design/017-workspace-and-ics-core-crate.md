@@ -3,6 +3,7 @@
 - Status: **Accepted**
 - Date: 2026-05-28
 - Amended: 2026-06-02 — [ADR-027](027-makeholiday-to-icscli-rename.md) renamed the CLI crate from `makeholiday` to `icscli`. The architectural decisions in this ADR (workspace shape, `ics-core` scope, error type wrapping, split timing) are unaffected. References below to the `makeholiday` crate / binary should be read as the `icscli` crate / binary from v0.2.0 onward; original prose preserved for historical accuracy.
+- Amended: 2026-06-04 — §"Publishing strategy" trigger #2 is replaced with concrete maturity gates (see §"Publishing strategy" below). The original "judged by the maintainer" wording was too subjective to operate on; the new gates name the four ics-core capability rounds that must land first. Effective consequence: ics-core publication and repository split are deferred past v0.2.0 and out of the v0.3.0 milestone too — the gates straddle v0.3.0 (timed events), v0.4.0 (VTODO editing), and a later milestone (ICS file composition / split). v0.2.0 therefore ships as an "in-tree ecosystem" milestone: icscli renamed, lazyics TUI complete, icslint complete, all four crates living in this workspace and reachable via `cargo install --git`. No crates.io publish in v0.2.0; the four placeholder names stay at 0.0.0.
 
 ## Context
 
@@ -131,12 +132,41 @@ pub enum MhError {
 
 ### Publishing strategy
 
-- `ics-core` is **not published to crates.io yet**. It lives only as a workspace path dependency.
-- Publication happens when one of these triggers fires:
-  1. icslint reaches a state where it needs to depend on `ics-core` from a separate repository.
-  2. `ics-core`'s public API stabilizes enough to commit to a versioned release (judged by the maintainer).
-- At publication time, a follow-up ADR records the publish trigger, the chosen `ics-core` version, and any final renames / API curation needed before going public.
-- `makeholiday` likewise stays unpublished until 1.0 (per [ADR-010](010-lib-and-main-separation.md)).
+- `ics-core` is **not published to crates.io yet**. It lives only as a
+  workspace path dependency. Four placeholder names (`ics-core`,
+  `icscli`, `icslint`, `lazyics`) are reserved at `0.0.0` on crates.io —
+  see [project memory: release pipeline](#).
+- Publication happens when **all four** of these maturity gates land
+  (the 2026-06-04 amendment supersedes the original "judged by the
+  maintainer" trigger as too subjective to operate on):
+  1. **Timed VEvent typing** — [ADR-001](001-vendor-extension-typing.md)
+     Rule 9 revised so `VEvent.dtstart` / `dtend` carry typed
+     `DATE-TIME` + optional `TZID` instead of routing timed events to
+     `RawComponent`. VTimezone typing lands as part of the same round.
+     (Originally scheduled for v0.3.0 alongside CalDAV.)
+  2. **Full VTODO editing surface** — [ADR-021](021-vtodo-scope.md)
+     lifted from "typed read-only via `list --include-todos`" to full
+     CRUD parity with `VEvent`. `icscli` gains `add-todo` / `edit-todo`
+     / `remove-todo` (or equivalent flags on existing verbs).
+  3. **ICS file composition** — typed merge of two or more `VCalendar`
+     values (de-duplication on `UID`, conflict resolution policy, raw
+     property reconciliation). Surfaced through `icscli` as a `merge` /
+     `compose` subcommand.
+  4. **ICS file split** — typed extraction of a subset of events into
+     a new `VCalendar` (predicate-based, date-range, or UID list).
+     Surfaced through `icscli` as a `split` / `extract` subcommand.
+- Until all four gates land, this is a **single-repository monorepo
+  workspace**. Tagged releases (`v0.2.0`, `v0.3.0`, …) carry every
+  crate's source forward in lockstep; no crates.io upload happens
+  during a release.
+- When the four gates land, a follow-up ADR records: the publish
+  trigger (which gate closed last), the chosen `ics-core` version
+  (likely `0.x.0` with `x` being the milestone number, not `1.0.0`),
+  any final renames / API curation, and the repository split timing.
+  The repository split mechanically follows publication (see
+  §"Repository split strategy").
+- `icscli` likewise stays unpublished until 1.0 (per
+  [ADR-010](010-lib-and-main-separation.md) and [ADR-027](027-makeholiday-to-icscli-rename.md)).
 
 ### Repository split strategy
 

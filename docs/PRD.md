@@ -113,35 +113,56 @@ The v0.1.x series (shipped under the name `makeholiday`) scopes the CLI as a hig
 - CLI UX polish ([ADR-015](design/015-diagnostic-output.md) `--quiet` / `--interactive`, [ADR-020](design/020-cli-subcommand-policy.md) help-text examples).
 - v0.1.0 freezes the CLI surface contract for SemVer purposes ([ADR-004](design/004-trunk-based-and-semver.md)).
 
-### v0.2.0 — ICS Ecosystem (next)
+### v0.2.0 — In-tree ICS Ecosystem (current — 2026-06-04 revision)
 
-The v0.2.0 series shifts the project from a single CLI to a small ecosystem of tools all consuming the same `ics-core` library. The library graduates from in-tree workspace member to a published crate with its own repository.
+The v0.2.0 series shifts the project from a single CLI to a four-tool ecosystem, all consuming the same in-workspace `ics-core` library. The original plan extracted `ics-core` to its own repository here; that move is now deferred (see [ADR-017](design/017-workspace-and-ics-core-crate.md) §"Publishing strategy" amended 2026-06-04). The four-gate maturity criterion replaces the older "judged by the maintainer" trigger, and none of the four gates close before v0.2.0 ship.
 
-- **`ics-core` extracted to its own repository** and published to crates.io. The version contract for `ics-core` begins here, derived from the v0.1.x experience inside this repo. See [ADR-017](design/017-workspace-and-ics-core-crate.md) for the split trigger and lifecycle.
 - **`icscli` — the renamed CLI** (was `makeholiday` in v0.1.x). The brand rename ([ADR-027](design/027-makeholiday-to-icscli-rename.md)) aligns the CLI with the rest of the `ics*` ecosystem. Functional surface preserved.
-- **`lazyics` — interactive TUI editor** for `.ics` files, inspired by `lazygit`. Naming convention: lazy-prefixed TUI tools. Ships as a **separate binary** (`cargo install lazyics`), built on `ratatui`, depending on the `icscli` library's use cases to mechanically prevent CLI/TUI divergence. See [ADR-025](design/025-lazyics-project-definition.md) (supersedes [ADR-022](design/022-tui-front-end-policy.md)).
+- **`lazyics` — interactive TUI editor** for `.ics` files, inspired by `lazygit`. Ships as a **separate binary**, built on `ratatui`, depending on the `icscli` library's use cases to mechanically prevent CLI/TUI divergence. List / Timeline / Grid views with week / month / year granularity, multi-select Remove, search-as-you-type, Add / Edit forms reachable from every view, month / year jump pickers, and a visual-range mode for multi-day Add. See [ADR-025](design/025-lazyics-project-definition.md) (supersedes [ADR-022](design/022-tui-front-end-policy.md)).
 - **`icslint` — ICS lint tool** consuming `ics-core`. Surfaces vendor-prefix warnings ("this property is Microsoft-specific and will be ignored by Google clients") and RFC compliance hints. Four rule families ship at v0.2.0 — RFC 5545 cardinality/required, vendor hygiene, text encoding, structure. See [ADR-026](design/026-icslint-project-definition.md).
-- `icscli` itself continues evolving on the v0.1.x feature trajectory — additive features like `search` / `filter`, `import` / `export`, calendar-level extensions land here too.
+- **`ics-core` stays in this workspace** as a path dependency for all three consumers above. No crates.io upload in v0.2.0. The four placeholder crate names on crates.io stay at `0.0.0`.
 
-The three-tool launch is the "ecosystem" theme. The release-train discipline of [ADR-024](design/024-solo-phase-branching-carve-out.md) reactivates the moment `ics-core` lands in its own repository (the carve-out's first trigger).
+Distribution for v0.2.0: source release only. Users install via
+`cargo install --git https://github.com/ShortArrow/makeholiday <bin>`
+(`icscli`, `icslint`, or `lazyics`). The git tag `v0.2.0` is the release artifact.
 
-### v0.3.0 — CalDAV / Cloud Backend
+The release-train discipline of [ADR-024](design/024-solo-phase-branching-carve-out.md) stays paused — its first trigger (`ics-core` lands in its own repository) does not fire here.
 
-The v0.3.0 series extends the ecosystem into a multi-backend story. The `ics-core` parser and typed model carry over unchanged because every CalDAV response is a syntactically valid `VCALENDAR` blob — the work concentrates on the I/O boundary, on event identity, and on time-of-day typing.
+### v0.3.0 — CalDAV / Cloud Backend & Timed Events
+
+The v0.3.0 series extends the ecosystem into a multi-backend story and finally types timed events. The work concentrates on the I/O boundary, on event identity, and on time-of-day typing.
 
 - CalDAV client integration with a per-event `Repository` abstraction (`fetch_by_uid`, `put_event`, `delete_by_uid`) alongside the bulk file-level API.
 - ETag-based optimistic locking on event resources.
-- Timed `VEvent` typing — revises [ADR-001](design/001-vendor-extension-typing.md) Rule 9 so that `DTSTART;VALUE=DATE-TIME` events stop falling back to `RawComponent`.
+- **Timed `VEvent` typing — closes maturity gate #1** ([ADR-017](design/017-workspace-and-ics-core-crate.md) §"Publishing strategy"). Revises [ADR-001](design/001-vendor-extension-typing.md) Rule 9 so that `DTSTART;VALUE=DATE-TIME` events stop falling back to `RawComponent`.
 - `VTimezone` typing alongside the timed-event work.
 - Authentication scaffolding for cloud calendars (CalDAV servers, future provider-specific APIs).
+- lazyics gains time inputs on Add / Edit forms once the type model carries them.
 
-This unblocks the "Cloud sync of calendar state between machines" item currently in [§7 Out of Scope](#7-out-of-scope).
+This unblocks the "Cloud sync of calendar state between machines" item currently in [§7 Out of Scope](#7-out-of-scope) and closes one of the four [ADR-017](design/017-workspace-and-ics-core-crate.md) maturity gates.
 
-### Beyond v0.3.0
+### v0.4.0 — Full VTODO Editing
 
-Open. Candidates currently on the watch list:
+Lifts [ADR-021](design/021-vtodo-scope.md) from "typed read-only via `list --include-todos`" to full CRUD parity with `VEvent`. **Closes maturity gate #2** ([ADR-017](design/017-workspace-and-ics-core-crate.md) §"Publishing strategy").
 
-- VTODO full editing (currently planned as read-only via `list --include-todos`; see [ADR-021](design/021-vtodo-scope.md)).
+- icscli: `add-todo` / `edit-todo` / `remove-todo` (or task-flavored flags on `add` / `edit` / `remove`).
+- lazyics: VTODO appears in views; Add / Edit forms cover task fields.
+- icslint: VTODO-aware rules expand.
+
+### v0.5.0 — ICS File Composition & Split
+
+**Closes maturity gates #3 and #4** ([ADR-017](design/017-workspace-and-ics-core-crate.md) §"Publishing strategy").
+
+- icscli `compose` / `merge` subcommand: typed merge of two or more `VCalendar` files with `UID`-based de-duplication, conflict-resolution policy, and raw-property reconciliation.
+- icscli `split` / `extract` subcommand: typed extraction by predicate (date range, summary substring, UID list) into one or more new `VCalendar` files.
+- ics-core surfaces the underlying combinators as a public library API.
+
+### Beyond v0.5.0 — `ics-core` Publication & Repository Split
+
+With all four [ADR-017](design/017-workspace-and-ics-core-crate.md) maturity gates closed, `ics-core` is published to crates.io for the first time and extracted to its own repository. A follow-up ADR records the publish trigger (which gate closed last), the chosen version, any final API curation, and the split mechanics. The release-train discipline of [ADR-024](design/024-solo-phase-branching-carve-out.md) reactivates at this moment — its first trigger fires.
+
+Open further candidates beyond the split:
+
 - Additional vendor profile typed fields beyond the current Microsoft `busystatus`.
 - RRULE materialization (recurring-event expansion), per `§7` still out of scope today.
 - Provider-specific cloud APIs (Google Calendar API, Microsoft Graph) layered on top of the CalDAV-shaped Repository abstraction.
