@@ -296,6 +296,42 @@ pub fn list<R: CalendarRepository>(
     }
 }
 
+/// Extract events overlapping `[from, to]` from `input` and write them
+/// as a new calendar at `output`. Non-destructive: `input`'s store is
+/// not modified. Per ADR-028.
+///
+/// `output` must not already exist (uses `create_with`, which fails
+/// with `AlreadyExists`). Calendar-level fields and unrecognized
+/// components are preserved from `input`.
+pub fn split<R: CalendarRepository, W: CalendarRepository>(
+    input: &R,
+    output: &W,
+    ctx: RunContext,
+    from: Option<NaiveDate>,
+    to: Option<NaiveDate>,
+) -> Result<()> {
+    if from.is_none() && to.is_none() {
+        return Err(IcsError::InvalidInput(
+            "split: at least one of --from or --to is required".to_string(),
+        ));
+    }
+    if let (Some(f), Some(t)) = (from, to)
+        && f > t
+    {
+        return Err(IcsError::InvalidInput(
+            "split: --from must not be after --to".to_string(),
+        ));
+    }
+    let cal = input.load()?;
+    let matched = ics::split_by_date_range(&cal, from, to);
+    let event_count = matched.events.len();
+    output.create_with(&matched)?;
+    ctx.status(&format!(
+        "Split: {event_count} event(s) written (input unchanged)"
+    ));
+    Ok(())
+}
+
 pub fn remove<R: CalendarRepository>(
     repo: &R,
     ctx: RunContext,
@@ -699,6 +735,95 @@ mod tests {
         };
         let result = edit(&repo, RunContext::default(), 99, patch);
         assert!(matches!(result, Err(IcsError::NotFound(_))));
+    }
+
+    // ADR-028 split: extraction into a separate file, input untouched.
+
+    // The fixture seeds two events: one in Jan, one in Mar.
+    fn seed_split_input() -> (TempDir, FileCalendarRepository) {
+        let dir = TempDir::new().unwrap();
+        let repo = temp_repo(&dir, "input.ics");
+        init(&repo).unwrap();
+        add_free(&repo, "元日", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+        add_free_with_end(
+            &repo,
+            "春休み",
+            NaiveDate::from_ymd_opt(2026, 3, 27).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 4, 5).unwrap(),
+        );
+        (dir, repo)
+    }
+
+    #[test]
+    fn split_writes_matched_to_out_file() {
+        let (dir, input) = seed_split_input();
+        let output = FileCalendarRepository::new(dir.path().join("q1.ics"));
+        split(
+            &input,
+            &output,
+            RunContext::default(),
+            Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+            Some(NaiveDate::from_ymd_opt(2026, 3, 31).unwrap()),
+        )
+        .unwrap();
+        let out_cal = output.load().unwrap();
+        let summaries: Vec<_> = out_cal.events.iter().map(|e| e.summary.as_str()).collect();
+        assert_eq!(summaries, vec!["元日", "春休み"]);
+    }
+
+    #[test]
+    fn split_leaves_input_unchanged() {
+        let (dir, input) = seed_split_input();
+        let output = FileCalendarRepository::new(dir.path().join("q1.ics"));
+        let before = input.load().unwrap();
+        split(
+            &input,
+            &output,
+            RunContext::default(),
+            Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+            Some(NaiveDate::from_ymd_opt(2026, 2, 28).unwrap()),
+        )
+        .unwrap();
+        let after = input.load().unwrap();
+        assert_eq!(before.events.len(), after.events.len());
+    }
+
+    #[test]
+    fn split_errors_if_out_exists() {
+        let (dir, input) = seed_split_input();
+        let out_path = dir.path().join("q1.ics");
+        let output = FileCalendarRepository::new(out_path);
+        output.create().unwrap();
+        let result = split(
+            &input,
+            &output,
+            RunContext::default(),
+            Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+            None,
+        );
+        assert!(matches!(result, Err(IcsError::AlreadyExists { .. })));
+    }
+
+    #[test]
+    fn split_rejects_no_bounds() {
+        let (dir, input) = seed_split_input();
+        let output = FileCalendarRepository::new(dir.path().join("q1.ics"));
+        let result = split(&input, &output, RunContext::default(), None, None);
+        assert!(matches!(result, Err(IcsError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn split_rejects_from_after_to() {
+        let (dir, input) = seed_split_input();
+        let output = FileCalendarRepository::new(dir.path().join("q1.ics"));
+        let result = split(
+            &input,
+            &output,
+            RunContext::default(),
+            Some(NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()),
+            Some(NaiveDate::from_ymd_opt(2026, 3, 1).unwrap()),
+        );
+        assert!(matches!(result, Err(IcsError::InvalidInput(_))));
     }
 
     #[test]

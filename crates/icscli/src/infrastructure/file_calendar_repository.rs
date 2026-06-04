@@ -64,6 +64,14 @@ impl CalendarRepository for FileCalendarRepository {
         self.atomic_write(&content, true)
     }
 
+    fn create_with(&self, calendar: &VCalendar) -> Result<()> {
+        if self.path.exists() {
+            return Err(IcsError::already_exists(self.path.clone()));
+        }
+        let content = ics::format_calendar(calendar);
+        self.atomic_write(&content, true)
+    }
+
     fn load(&self) -> Result<VCalendar> {
         let content =
             std::fs::read_to_string(&self.path).map_err(|e| IcsError::io(&self.path, e))?;

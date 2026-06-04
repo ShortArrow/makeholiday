@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`icscli split` サブコマンド** ([ADR-028](design/028-split-subcommand.md)) — 指定日付範囲に重なるイベントを新しい ICS ファイルへ切り出す。非破壊: 入力ファイルは変更されない (削除は `remove` で別途実施)。`--from` / `--to` はいずれも inclusive、片側省略可、`--out` は既存だとエラー。[ADR-017](design/017-workspace-and-ics-core-crate.md) maturity gate #4 (ICS file split) の最初のスライス。
+- `ics_core::split_by_date_range(cal, from, to) -> VCalendar` — 日付範囲フィルタの純粋関数。境界の組み合わせに対して全域 (None/None は全件、from>to は空)。CLI 引数バリデーションは `icscli` use case 層に分離。
+- `CalendarRepository::create_with(&VCalendar)` — 指定 VCalendar 内容で新規ストアを atomic 作成。`split` のような「新規ファイルに内容を書く」use case のため `create()` と対になる。
+
 ## [0.2.0] - 2026-06-04
 
 v0.2.0「In-tree ICS エコシステム」マイルストーン。2026-06-04 の [ADR-017](design/017-workspace-and-ics-core-crate.md) 改訂により、`ics-core` は 4 つの maturity gate (時刻イベント、VTODO 編集、ICS 合成、ICS 切り出し) がすべて landing するまで workspace 内の path dep として留置。v0.2.0 は source release として ship、crates.io アップロードなし、`cargo install --git` で導入。

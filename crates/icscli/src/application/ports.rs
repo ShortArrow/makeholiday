@@ -17,6 +17,12 @@ pub trait CalendarRepository {
     /// `IcsError::AlreadyExists` if the store already has a calendar.
     fn create(&self) -> Result<()>;
 
+    /// Create a new calendar at the store populated with `calendar`'s
+    /// contents. Fails with `IcsError::AlreadyExists` if the store
+    /// already has a calendar. Used by use cases that write to a
+    /// destination distinct from their input (e.g., `split`).
+    fn create_with(&self, calendar: &VCalendar) -> Result<()>;
+
     /// Load and parse the stored calendar into a typed `VCalendar`.
     ///
     /// Parse errors surface as `IcsError::Parse` (wrapping `ics_core::Error`).

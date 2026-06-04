@@ -233,4 +233,30 @@ Examples:
         #[arg(long)]
         summary: Option<String>,
     },
+    /// Extract events in a date range into a new ICS file
+    #[command(long_about = "\
+Write the events overlapping [--from, --to] into a new calendar at --out.
+The input file (--file / -f) is not modified — `split` is non-destructive
+extraction; use `remove` afterwards if you want to prune the input.
+
+An event matches when its date span intersects the range. Both --from and
+--to are inclusive; either may be omitted for a half-open range, but at
+least one must be present. --out must not already exist (atomic create).
+
+Examples:
+  icscli -f all.ics split --from 2026-01-01 --to 2026-03-31 --out q1.ics
+  icscli -f all.ics split --to 2025-12-31 --out archive-2025.ics
+  icscli -f all.ics split --from 2027-01-01 --out future.ics
+")]
+    Split {
+        /// Inclusive lower bound (YYYY-MM-DD or YYYY/M/D)
+        #[arg(long, value_parser = parse_date)]
+        from: Option<NaiveDate>,
+        /// Inclusive upper bound (YYYY-MM-DD or YYYY/M/D)
+        #[arg(long, value_parser = parse_date)]
+        to: Option<NaiveDate>,
+        /// Destination ICS file (must not already exist)
+        #[arg(long)]
+        out: PathBuf,
+    },
 }

@@ -173,6 +173,41 @@ icscli remove
 - 範囲外インデックス (`< 1` または `> N`) は `Index out of range (1-N)` で失敗。
 - `--summary` が 1 件もマッチしない場合は `No event found with summary: <text>` で失敗。
 
+### `split`
+
+指定した日付範囲に重なるイベントを **新規** ICS ファイルへ切り出します。非破壊 — 入力ファイル (`--file` / `-f`) は変更されません。詳細は [ADR-028](design/028-split-subcommand.md)。
+
+```sh
+icscli split --out <PATH> [--from <DATE>] [--to <DATE>]
+```
+
+| フラグ | 必須 | 補足 |
+|---|---|---|
+| `--out <PATH>` | はい | 出力先 ICS ファイル。既に存在する場合は失敗 (atomic create)。 |
+| `--from <DATE>` | いずれか | 下限 (inclusive)。`YYYY-MM-DD` または `YYYY/M/D`。 |
+| `--to <DATE>` | いずれか | 上限 (inclusive)。`YYYY-MM-DD` または `YYYY/M/D`。 |
+
+`--from` / `--to` の少なくとも一方は必須。イベントは date span が `[from, to]` と **オーバーラップ** すれば一致 (境界をまたぐイベントも含む)。
+
+#### 例
+
+```sh
+# 第 1 四半期を切り出し
+icscli -f all.ics split --from 2026-01-01 --to 2026-03-31 --out q1.ics
+
+# 2025 年末までをアーカイブ
+icscli -f all.ics split --to 2025-12-31 --out archive-2025.ics
+
+# 2027 年以降の予定
+icscli -f all.ics split --from 2027-01-01 --out future.ics
+```
+
+#### エラー
+
+- `--from` / `--to` を両方省略 → `split: at least one of --from or --to is required`。
+- `--from` が `--to` より後ろ → `split: --from must not be after --to`。
+- `--out` のパスが既存 → `file already exists: <path>`。
+
 ## ファイル形式
 
 `icscli` は以下の慣例で RFC 5545 iCalendar を読み書きします:

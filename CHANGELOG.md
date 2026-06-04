@@ -8,6 +8,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **`icscli split` subcommand** ([ADR-028](docs/design/028-split-subcommand.md)) — extract events overlapping a date range into a new ICS file. Non-destructive: the input file is untouched (use `remove` to prune). `--from` / `--to` are both inclusive and either may be omitted; `--out` must not already exist. Closes the first slice of [ADR-017](docs/design/017-workspace-and-ics-core-crate.md) maturity gate #4 (ICS file split).
+- `ics_core::split_by_date_range(cal, from, to) -> VCalendar` — pure filter over a date range. Total over all bound combinations; CLI argument validation lives in the `icscli` use case layer.
+- `CalendarRepository::create_with(&VCalendar)` — atomic-create the store populated with the given calendar; pairs with `create()` for the new-file-with-content use cases like `split`.
+
 ## [0.2.0] - 2026-06-04
 
 The v0.2.0 "In-tree ICS Ecosystem" milestone. Per the 2026-06-04 amendment to [ADR-017](docs/design/017-workspace-and-ics-core-crate.md), `ics-core` stays in this workspace as a path dependency until four maturity gates close (timed events, full VTODO editing, ICS file composition, ICS file split). v0.2.0 ships as a source release — no crates.io upload; install via `cargo install --git`.

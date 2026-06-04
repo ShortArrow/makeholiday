@@ -173,6 +173,41 @@ icscli remove
 - Indices out of range (`< 1` or `> N`) fail with `Index out of range (1-N)`.
 - `--summary` with no match fails with `No event found with summary: <text>`.
 
+### `split`
+
+Extract events overlapping a date range into a **new** ICS file. Non-destructive — the input file (`--file` / `-f`) is not modified. See [ADR-028](design/028-split-subcommand.md).
+
+```sh
+icscli split --out <PATH> [--from <DATE>] [--to <DATE>]
+```
+
+| Flag | Required | Notes |
+|---|---|---|
+| `--out <PATH>` | yes | Destination ICS file. Fails if the path already exists (atomic create). |
+| `--from <DATE>` | one-of | Inclusive lower bound (YYYY-MM-DD or YYYY/M/D). |
+| `--to <DATE>` | one-of | Inclusive upper bound (YYYY-MM-DD or YYYY/M/D). |
+
+At least one of `--from` / `--to` must be present. An event matches when its date span **overlaps** `[from, to]` (events straddling either boundary are included).
+
+#### Examples
+
+```sh
+# Quarterly slice
+icscli -f all.ics split --from 2026-01-01 --to 2026-03-31 --out q1.ics
+
+# Archive: everything up to and including 2025
+icscli -f all.ics split --to 2025-12-31 --out archive-2025.ics
+
+# Future events from 2027 onward
+icscli -f all.ics split --from 2027-01-01 --out future.ics
+```
+
+#### Errors
+
+- Both `--from` and `--to` omitted → `split: at least one of --from or --to is required`.
+- `--from` after `--to` → `split: --from must not be after --to`.
+- `--out` path already exists → `file already exists: <path>`.
+
 ## File Format
 
 `icscli` reads and writes RFC 5545 iCalendar files with the following conventions:

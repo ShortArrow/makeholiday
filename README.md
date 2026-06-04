@@ -13,6 +13,7 @@ A small command-line tool for building and editing iCalendar (`.ics`) files. Des
 - `list` — list events, optionally sorted, optionally as JSON
 - `icons` — show the bundled preset icon names
 - `remove` — delete events by index, range, or summary
+- `split` — extract events in a date range into a new ICS file (non-destructive)
 - Microsoft-style busy status (`FREE` / `TENTATIVE` / `BUSY` / `OOF` / `WORKINGELSEWHERE`)
 - Event classification (`PUBLIC` / `PRIVATE` / `CONFIDENTIAL`)
 - Categories and an `X-ICSCLI-ICON` vendor X-property
