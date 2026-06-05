@@ -309,10 +309,11 @@ pub fn split<R: CalendarRepository, W: CalendarRepository>(
     ctx: RunContext,
     from: Option<NaiveDate>,
     to: Option<NaiveDate>,
+    uids: &[String],
 ) -> Result<()> {
-    if from.is_none() && to.is_none() {
+    if from.is_none() && to.is_none() && uids.is_empty() {
         return Err(IcsError::InvalidInput(
-            "split: at least one of --from or --to is required".to_string(),
+            "split: at least one of --from, --to, or --uid is required".to_string(),
         ));
     }
     if let (Some(f), Some(t)) = (from, to)
@@ -322,10 +323,15 @@ pub fn split<R: CalendarRepository, W: CalendarRepository>(
             "split: --from must not be after --to".to_string(),
         ));
     }
-    let cal = input.load()?;
-    let matched = ics::split_by_date_range(&cal, from, to);
-    let event_count = matched.events.len();
-    output.create_with(&matched)?;
+    let mut filtered = input.load()?;
+    if from.is_some() || to.is_some() {
+        filtered = ics::split_by_date_range(&filtered, from, to);
+    }
+    if !uids.is_empty() {
+        filtered = ics::split_by_uids(&filtered, uids);
+    }
+    let event_count = filtered.events.len();
+    output.create_with(&filtered)?;
     ctx.status(&format!(
         "Split: {event_count} event(s) written (input unchanged)"
     ));
@@ -764,6 +770,7 @@ mod tests {
             RunContext::default(),
             Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
             Some(NaiveDate::from_ymd_opt(2026, 3, 31).unwrap()),
+            &[],
         )
         .unwrap();
         let out_cal = output.load().unwrap();
@@ -782,6 +789,7 @@ mod tests {
             RunContext::default(),
             Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
             Some(NaiveDate::from_ymd_opt(2026, 2, 28).unwrap()),
+            &[],
         )
         .unwrap();
         let after = input.load().unwrap();
@@ -800,6 +808,7 @@ mod tests {
             RunContext::default(),
             Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
             None,
+            &[],
         );
         assert!(matches!(result, Err(IcsError::AlreadyExists { .. })));
     }
@@ -808,7 +817,7 @@ mod tests {
     fn split_rejects_no_bounds() {
         let (dir, input) = seed_split_input();
         let output = FileCalendarRepository::new(dir.path().join("q1.ics"));
-        let result = split(&input, &output, RunContext::default(), None, None);
+        let result = split(&input, &output, RunContext::default(), None, None, &[]);
         assert!(matches!(result, Err(IcsError::InvalidInput(_))));
     }
 
@@ -822,8 +831,118 @@ mod tests {
             RunContext::default(),
             Some(NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()),
             Some(NaiveDate::from_ymd_opt(2026, 3, 1).unwrap()),
+            &[],
         );
         assert!(matches!(result, Err(IcsError::InvalidInput(_))));
+    }
+
+    // ADR-028 amendment: --uid slice (set membership + AND-composition).
+
+    /// Read events from the seeded input and return their UIDs in order.
+    fn seeded_uids(input: &FileCalendarRepository) -> Vec<String> {
+        input
+            .load()
+            .unwrap()
+            .events
+            .iter()
+            .map(|e| e.uid.clone())
+            .collect()
+    }
+
+    #[test]
+    fn split_with_uid_only_selects_those_events() {
+        let (dir, input) = seed_split_input();
+        let uids = seeded_uids(&input);
+        // Pick just the second event by UID.
+        let target_uid = uids[1].clone();
+        let output = FileCalendarRepository::new(dir.path().join("out.ics"));
+        split(
+            &input,
+            &output,
+            RunContext::default(),
+            None,
+            None,
+            std::slice::from_ref(&target_uid),
+        )
+        .unwrap();
+        let out_cal = output.load().unwrap();
+        assert_eq!(out_cal.events.len(), 1);
+        assert_eq!(out_cal.events[0].uid, target_uid);
+    }
+
+    #[test]
+    fn split_with_date_range_and_uid_intersects() {
+        let (dir, input) = seed_split_input();
+        let uids = seeded_uids(&input);
+        // 元日 (Jan 1) is uids[0]; 春休み (Mar 27 - Apr 5) is uids[1].
+        // Range Jan-Feb 28 alone would match only 元日 ; --uid restricts to 春休み.
+        // Intersection: empty.
+        let output = FileCalendarRepository::new(dir.path().join("out.ics"));
+        split(
+            &input,
+            &output,
+            RunContext::default(),
+            Some(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+            Some(NaiveDate::from_ymd_opt(2026, 2, 28).unwrap()),
+            &[uids[1].clone()],
+        )
+        .unwrap();
+        let out_cal = output.load().unwrap();
+        assert!(out_cal.events.is_empty());
+    }
+
+    #[test]
+    fn split_with_date_range_and_uid_intersects_overlapping_match() {
+        let (dir, input) = seed_split_input();
+        let uids = seeded_uids(&input);
+        // Range overlapping 春休み (uids[1]); --uid for 春休み. Intersection: 春休み.
+        let output = FileCalendarRepository::new(dir.path().join("out.ics"));
+        split(
+            &input,
+            &output,
+            RunContext::default(),
+            Some(NaiveDate::from_ymd_opt(2026, 3, 1).unwrap()),
+            Some(NaiveDate::from_ymd_opt(2026, 4, 30).unwrap()),
+            &[uids[1].clone()],
+        )
+        .unwrap();
+        let out_cal = output.load().unwrap();
+        assert_eq!(out_cal.events.len(), 1);
+        assert_eq!(out_cal.events[0].uid, uids[1]);
+    }
+
+    #[test]
+    fn split_with_uid_alone_satisfies_at_least_one_validation() {
+        let (dir, input) = seed_split_input();
+        let uids = seeded_uids(&input);
+        let output = FileCalendarRepository::new(dir.path().join("out.ics"));
+        // No --from / --to but non-empty --uid: must not be rejected.
+        let result = split(
+            &input,
+            &output,
+            RunContext::default(),
+            None,
+            None,
+            &[uids[0].clone()],
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn split_with_unknown_uid_writes_empty_calendar_no_error() {
+        let (dir, input) = seed_split_input();
+        let output = FileCalendarRepository::new(dir.path().join("out.ics"));
+        split(
+            &input,
+            &output,
+            RunContext::default(),
+            None,
+            None,
+            &["does-not-exist".to_string()],
+        )
+        .unwrap();
+        let out_cal = output.load().unwrap();
+        assert!(out_cal.events.is_empty());
     }
 
     #[test]

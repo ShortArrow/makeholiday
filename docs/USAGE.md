@@ -175,10 +175,10 @@ icscli remove
 
 ### `split`
 
-Extract events overlapping a date range into a **new** ICS file. Non-destructive — the input file (`--file` / `-f`) is not modified. See [ADR-028](design/028-split-subcommand.md).
+Extract a subset of events into a **new** ICS file. Non-destructive — the input file (`--file` / `-f`) is not modified. See [ADR-028](design/028-split-subcommand.md).
 
 ```sh
-icscli split --out <PATH> [--from <DATE>] [--to <DATE>]
+icscli split --out <PATH> [--from <DATE>] [--to <DATE>] [--uid <UID>]...
 ```
 
 | Flag | Required | Notes |
@@ -186,8 +186,13 @@ icscli split --out <PATH> [--from <DATE>] [--to <DATE>]
 | `--out <PATH>` | yes | Destination ICS file. Fails if the path already exists (atomic create). |
 | `--from <DATE>` | one-of | Inclusive lower bound (YYYY-MM-DD or YYYY/M/D). |
 | `--to <DATE>` | one-of | Inclusive upper bound (YYYY-MM-DD or YYYY/M/D). |
+| `--uid <UID>` | one-of | Match event by UID. Repeatable — the union of listed UIDs forms the candidate set. UIDs that no event matches are silently skipped. |
 
-At least one of `--from` / `--to` must be present. An event matches when its date span **overlaps** `[from, to]` (events straddling either boundary are included).
+**At least one** of `--from` / `--to` / `--uid` must be present.
+
+**Predicate composition.** When multiple predicates are given they **AND together** (intersection): an event is written only if it satisfies every specified predicate. Inside the use case the predicates apply as a pipeline (date-range filter → UID filter); each stage narrows the candidate set.
+
+An event matches the date range when its date span **overlaps** `[from, to]` (events straddling either boundary are included).
 
 #### Examples
 
@@ -200,13 +205,22 @@ icscli -f all.ics split --to 2025-12-31 --out archive-2025.ics
 
 # Future events from 2027 onward
 icscli -f all.ics split --from 2027-01-01 --out future.ics
+
+# Pick specific events by UID
+icscli -f all.ics split --uid <UID-A> --uid <UID-B> --out picked.ics
+
+# AND-composition: events in Q2 *and* matching one of these UIDs
+icscli -f all.ics split --from 2026-04-01 --to 2026-06-30 \
+    --uid <UID-A> --uid <UID-B> --out q2-picked.ics
 ```
 
 #### Errors
 
-- Both `--from` and `--to` omitted → `split: at least one of --from or --to is required`.
+- All of `--from`, `--to`, `--uid` omitted → `split: at least one of --from, --to, or --uid is required`.
 - `--from` after `--to` → `split: --from must not be after --to`.
 - `--out` path already exists → `file already exists: <path>`.
+
+UIDs supplied via `--uid` that no event matches are **not** errors — the operation succeeds and writes whichever events did match (possibly zero). This keeps the command idempotent for scripts that union UID lists from multiple sources.
 
 ## File Format
 

@@ -233,20 +233,32 @@ Examples:
         #[arg(long)]
         summary: Option<String>,
     },
-    /// Extract events in a date range into a new ICS file
+    /// Extract events into a new ICS file (date range and / or UID list)
     #[command(long_about = "\
-Write the events overlapping [--from, --to] into a new calendar at --out.
-The input file (--file / -f) is not modified — `split` is non-destructive
-extraction; use `remove` afterwards if you want to prune the input.
+Write a subset of events into a new calendar at --out. The input file
+(--file / -f) is not modified — `split` is non-destructive extraction;
+use `remove` afterwards if you want to prune the input.
 
-An event matches when its date span intersects the range. Both --from and
---to are inclusive; either may be omitted for a half-open range, but at
-least one must be present. --out must not already exist (atomic create).
+Predicates (at least one of --from, --to, --uid is required):
+  --from / --to   Inclusive date-range bounds. An event matches when its
+                  date span intersects the range. Either bound may be
+                  omitted for a half-open range.
+  --uid           Match events with this UID. Repeatable; the union of
+                  the listed UIDs forms the candidate set.
+
+When multiple predicates are given they AND together (intersection):
+only events satisfying every predicate are written. --uid values that
+no event matches are silently skipped (the output may be empty).
+
+--out must not already exist (atomic create).
 
 Examples:
   icscli -f all.ics split --from 2026-01-01 --to 2026-03-31 --out q1.ics
   icscli -f all.ics split --to 2025-12-31 --out archive-2025.ics
   icscli -f all.ics split --from 2027-01-01 --out future.ics
+  icscli -f all.ics split --uid <UID-A> --uid <UID-B> --out picked.ics
+  icscli -f all.ics split --from 2026-04-01 --to 2026-06-30 \\
+      --uid <UID-A> --out q2-just-A.ics
 ")]
     Split {
         /// Inclusive lower bound (YYYY-MM-DD or YYYY/M/D)
@@ -255,6 +267,9 @@ Examples:
         /// Inclusive upper bound (YYYY-MM-DD or YYYY/M/D)
         #[arg(long, value_parser = parse_date)]
         to: Option<NaiveDate>,
+        /// Event UID to match (repeatable, union)
+        #[arg(long)]
+        uid: Vec<String>,
         /// Destination ICS file (must not already exist)
         #[arg(long)]
         out: PathBuf,

@@ -175,10 +175,10 @@ icscli remove
 
 ### `split`
 
-指定した日付範囲に重なるイベントを **新規** ICS ファイルへ切り出します。非破壊 — 入力ファイル (`--file` / `-f`) は変更されません。詳細は [ADR-028](design/028-split-subcommand.md)。
+イベントの部分集合を **新規** ICS ファイルへ切り出します。非破壊 — 入力ファイル (`--file` / `-f`) は変更されません。詳細は [ADR-028](design/028-split-subcommand.md)。
 
 ```sh
-icscli split --out <PATH> [--from <DATE>] [--to <DATE>]
+icscli split --out <PATH> [--from <DATE>] [--to <DATE>] [--uid <UID>]...
 ```
 
 | フラグ | 必須 | 補足 |
@@ -186,8 +186,13 @@ icscli split --out <PATH> [--from <DATE>] [--to <DATE>]
 | `--out <PATH>` | はい | 出力先 ICS ファイル。既に存在する場合は失敗 (atomic create)。 |
 | `--from <DATE>` | いずれか | 下限 (inclusive)。`YYYY-MM-DD` または `YYYY/M/D`。 |
 | `--to <DATE>` | いずれか | 上限 (inclusive)。`YYYY-MM-DD` または `YYYY/M/D`。 |
+| `--uid <UID>` | いずれか | UID で一致するイベントを選択。繰り返し可で、列挙された UID の和集合が候補。マッチしない UID は静かにスキップ。 |
 
-`--from` / `--to` の少なくとも一方は必須。イベントは date span が `[from, to]` と **オーバーラップ** すれば一致 (境界をまたぐイベントも含む)。
+`--from` / `--to` / `--uid` の **少なくとも 1 つ** は必須。
+
+**述語合成。** 複数の述語を指定すると **AND 合成 (交差)** されます: 指定したすべての述語を満たすイベントのみが書き出されます。内部実装は use case 層でフィルタを順次適用するパイプライン (date-range → UID set)。
+
+日付範囲マッチは date span が `[from, to]` と **オーバーラップ** すれば一致 (境界をまたぐイベントも含む)。
 
 #### 例
 
@@ -200,13 +205,22 @@ icscli -f all.ics split --to 2025-12-31 --out archive-2025.ics
 
 # 2027 年以降の予定
 icscli -f all.ics split --from 2027-01-01 --out future.ics
+
+# UID 指定で個別イベントだけ抜く
+icscli -f all.ics split --uid <UID-A> --uid <UID-B> --out picked.ics
+
+# AND 合成: Q2 期間内 *かつ* 指定 UID のいずれか
+icscli -f all.ics split --from 2026-04-01 --to 2026-06-30 \
+    --uid <UID-A> --uid <UID-B> --out q2-picked.ics
 ```
 
 #### エラー
 
-- `--from` / `--to` を両方省略 → `split: at least one of --from or --to is required`。
+- `--from` / `--to` / `--uid` をすべて省略 → `split: at least one of --from, --to, or --uid is required`。
 - `--from` が `--to` より後ろ → `split: --from must not be after --to`。
 - `--out` のパスが既存 → `file already exists: <path>`。
+
+`--uid` で渡した UID がどのイベントとも一致しなくても **エラーになりません** — マッチしたイベントだけが書かれます (0 件のこともあり得る)。複数ソースから UID リストを和取りするスクリプトの冪等性のため、この挙動を選んでいます。
 
 ## ファイル形式
 

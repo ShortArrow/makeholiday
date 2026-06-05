@@ -11,7 +11,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 
 - **`icscli split` subcommand** ([ADR-028](docs/design/028-split-subcommand.md)) — extract events overlapping a date range into a new ICS file. Non-destructive: the input file is untouched (use `remove` to prune). `--from` / `--to` are both inclusive and either may be omitted; `--out` must not already exist. Closes the first slice of [ADR-017](docs/design/017-workspace-and-ics-core-crate.md) maturity gate #4 (ICS file split).
+- **`icscli split --uid <UID>`** (repeatable) — second slice of ADR-028 / gate #4. Set-membership predicate; UIDs that no event matches are silently skipped. Combines with `--from` / `--to` via AND-composition in the use case's filter pipeline. Unlocks future lazyics "export selected events" by reusing `use_cases::split` directly.
 - `ics_core::split_by_date_range(cal, from, to) -> VCalendar` — pure filter over a date range. Total over all bound combinations; CLI argument validation lives in the `icscli` use case layer.
+- `ics_core::split_by_uids(cal, uids) -> VCalendar` — pure filter on UID set membership. Empty `uids` returns no events (mathematical reading); missing UIDs are silently skipped.
 - `CalendarRepository::create_with(&VCalendar)` — atomic-create the store populated with the given calendar; pairs with `create()` for the new-file-with-content use cases like `split`.
 
 ## [0.2.0] - 2026-06-04

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use chrono::NaiveDate;
 
 use crate::error::{Error, Result};
@@ -101,6 +103,31 @@ pub fn split_by_date_range(
         .events
         .iter()
         .filter(|e| from.is_none_or(|f| e.dtend > f) && to.is_none_or(|t| e.dtstart <= t))
+        .cloned()
+        .collect();
+    VCalendar {
+        events: matched,
+        ..cal.clone()
+    }
+}
+
+/// Return a new `VCalendar` containing only the events whose `UID`
+/// appears in `uids`. Set-membership semantics: an empty `uids` list
+/// returns no events (the empty intersection). UIDs in `uids` that no
+/// event matches are silently skipped — not an error.
+///
+/// Calendar-level fields (prodid, version, X-WR-*) and unrecognized
+/// components are preserved verbatim from `cal`. Events appear in the
+/// input order.
+///
+/// Caller-side policy (e.g., treating a missing CLI flag as identity
+/// rather than empty-set) lives one layer up — see ADR-028 amendment.
+pub fn split_by_uids(cal: &VCalendar, uids: &[String]) -> VCalendar {
+    let wanted: HashSet<&str> = uids.iter().map(String::as_str).collect();
+    let matched: Vec<VEvent> = cal
+        .events
+        .iter()
+        .filter(|e| wanted.contains(e.uid.as_str()))
         .cloned()
         .collect();
     VCalendar {
@@ -301,6 +328,70 @@ mod tests {
         let cal = split_fixture();
         let before_len = cal.events.len();
         let _ = split_by_date_range(&cal, Some(ymd(2026, 1, 1)), Some(ymd(2026, 3, 31)));
+        assert_eq!(cal.events.len(), before_len);
+    }
+
+    // ADR-028 amendment: split_by_uids (UID set membership)
+
+    #[test]
+    fn split_by_uids_selects_listed_uids_only() {
+        let cal = split_fixture();
+        let result = split_by_uids(&cal, &["b".to_string(), "d".to_string()]);
+        let uids: Vec<_> = result.events.iter().map(|e| e.uid.as_str()).collect();
+        assert_eq!(uids, vec!["b", "d"]);
+    }
+
+    #[test]
+    fn split_by_uids_preserves_input_order_not_uid_arg_order() {
+        let cal = split_fixture();
+        // Caller lists 'e' before 'a', but output keeps fixture order (a..e).
+        let result = split_by_uids(&cal, &["e".to_string(), "a".to_string()]);
+        let uids: Vec<_> = result.events.iter().map(|e| e.uid.as_str()).collect();
+        assert_eq!(uids, vec!["a", "e"]);
+    }
+
+    #[test]
+    fn split_by_uids_empty_list_returns_empty() {
+        // Set-membership: empty set matches nothing.
+        let cal = split_fixture();
+        let result = split_by_uids(&cal, &[]);
+        assert!(result.events.is_empty());
+    }
+
+    #[test]
+    fn split_by_uids_missing_uid_silently_skipped() {
+        let cal = split_fixture();
+        let result = split_by_uids(
+            &cal,
+            &["b".to_string(), "nonexistent".to_string(), "d".to_string()],
+        );
+        let uids: Vec<_> = result.events.iter().map(|e| e.uid.as_str()).collect();
+        assert_eq!(uids, vec!["b", "d"]);
+    }
+
+    #[test]
+    fn split_by_uids_all_missing_returns_empty_no_error() {
+        let cal = split_fixture();
+        let result = split_by_uids(&cal, &["nope1".to_string(), "nope2".to_string()]);
+        assert!(result.events.is_empty());
+    }
+
+    #[test]
+    fn split_by_uids_preserves_calendar_level_fields() {
+        let cal = VCalendar {
+            prodid: "-//custom//PRODID".to_string(),
+            ..split_fixture()
+        };
+        let result = split_by_uids(&cal, &["c".to_string()]);
+        assert_eq!(result.prodid, "-//custom//PRODID");
+        assert_eq!(result.version, cal.version);
+    }
+
+    #[test]
+    fn split_by_uids_does_not_mutate_input() {
+        let cal = split_fixture();
+        let before_len = cal.events.len();
+        let _ = split_by_uids(&cal, &["a".to_string(), "b".to_string()]);
         assert_eq!(cal.events.len(), before_len);
     }
 }

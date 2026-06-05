@@ -86,9 +86,9 @@ fn main() {
         Commands::Remove { target, summary } => {
             use_cases::remove(&repo, ctx, summary.as_deref(), target.as_deref())
         }
-        Commands::Split { from, to, out } => {
+        Commands::Split { from, to, uid, out } => {
             let out_repo = FileCalendarRepository::new(out);
-            use_cases::split(&repo, &out_repo, ctx, from, to)
+            use_cases::split(&repo, &out_repo, ctx, from, to, &uid)
         }
     };
     if let Err(e) = result {

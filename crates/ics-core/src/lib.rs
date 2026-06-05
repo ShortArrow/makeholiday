@@ -21,6 +21,7 @@ pub use parser::{parse_calendar, parse_indices};
 pub use profile::{google, icloud, microsoft};
 pub use query::{
     SortKey, remove_event_by_summary, remove_events_by_indices, sort_events, split_by_date_range,
+    split_by_uids,
 };
 pub use raw::{RawComponent, RawProperty};
 pub use vcalendar::VCalendar;

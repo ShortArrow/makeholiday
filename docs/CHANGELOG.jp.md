@@ -11,7 +11,9 @@
 ### Added
 
 - **`icscli split` サブコマンド** ([ADR-028](design/028-split-subcommand.md)) — 指定日付範囲に重なるイベントを新しい ICS ファイルへ切り出す。非破壊: 入力ファイルは変更されない (削除は `remove` で別途実施)。`--from` / `--to` はいずれも inclusive、片側省略可、`--out` は既存だとエラー。[ADR-017](design/017-workspace-and-ics-core-crate.md) maturity gate #4 (ICS file split) の最初のスライス。
+- **`icscli split --uid <UID>`** (繰り返し可) — ADR-028 / gate #4 の 2 番目のスライス。集合メンバシップ述語で、マッチしない UID は静かにスキップ。`--from` / `--to` と組み合わせると use case 内のフィルタパイプラインで AND 合成 (交差)。lazyics の将来の「選択イベントをファイルに切り出し」モードは `use_cases::split` をそのまま呼ぶだけで実現可能。
 - `ics_core::split_by_date_range(cal, from, to) -> VCalendar` — 日付範囲フィルタの純粋関数。境界の組み合わせに対して全域 (None/None は全件、from>to は空)。CLI 引数バリデーションは `icscli` use case 層に分離。
+- `ics_core::split_by_uids(cal, uids) -> VCalendar` — UID 集合メンバシップの純粋フィルタ。空 `uids` は空結果 (数学的な集合の読み)、存在しない UID は静かにスキップ。
 - `CalendarRepository::create_with(&VCalendar)` — 指定 VCalendar 内容で新規ストアを atomic 作成。`split` のような「新規ファイルに内容を書く」use case のため `create()` と対になる。
 
 ## [0.2.0] - 2026-06-04
